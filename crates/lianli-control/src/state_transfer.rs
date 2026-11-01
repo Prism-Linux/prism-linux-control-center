@@ -1277,6 +1277,10 @@ mod tests {
             return;
         }
         let root = tempfile::tempdir().unwrap();
+        let privileged = unsafe { libc::geteuid() } == 0;
+        if privileged {
+            fs::set_permissions(root.path(), fs::Permissions::from_mode(0o711)).unwrap();
+        }
         let source = root.path().join("source");
         let target = root.path().join("destination");
         fs::DirBuilder::new().mode(0o700).create(&source).unwrap();
@@ -1287,7 +1291,6 @@ mod tests {
         )
         .unwrap();
         fs::write(source.join("private.png"), b"private fixture pixels").unwrap();
-        let privileged = unsafe { libc::geteuid() } == 0;
         let account = |uid| {
             let gid = if privileged {
                 uid
