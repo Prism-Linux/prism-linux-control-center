@@ -16,9 +16,9 @@
   </description>
   <developer id="io.github.sgtaziz"><name>sgtaziz</name></developer>
   <launchable type="desktop-id">com.sgtaziz.lianlilinux.desktop</launchable>
-  <url type="homepage">https://github.com/sgtaziz/prism-linux-control-center</url>
-  <url type="bugtracker">https://github.com/sgtaziz/prism-linux-control-center/issues</url>
-  <url type="help">https://github.com/sgtaziz/prism-linux-control-center/tree/main/docs</url>
+  <url type="homepage">https://github.com/Prism-Linux/prism-linux-control-center</url>
+  <url type="bugtracker">https://github.com/Prism-Linux/prism-linux-control-center/issues</url>
+  <url type="help">https://github.com/Prism-Linux/prism-linux-control-center/tree/main/docs</url>
   <content_rating type="oars-1.1"/>
   <provides>
     <modalias>usb:v0416p7371d*</modalias>

@@ -6,10 +6,10 @@ import { readStoredJson, writeStoredJson } from "@/utils/storedPreference";
 import { isNewer, isPrerelease, latestReleaseVersion, normalizeVersion, releaseApiForVersion, releaseUrlForVersion } from "@/utils/releaseVersion";
 
 const LEGACY_STABLE_RELEASE_API = "https://api.github.com/repos/sgtaziz/lian-li-linux/releases/latest";
-const PRISM_STABLE_RELEASE_API = "https://api.github.com/repos/sgtaziz/prism-linux-control-center/releases/latest";
-const PRERELEASES_API = "https://api.github.com/repos/sgtaziz/prism-linux-control-center/releases?per_page=20";
+const PRISM_STABLE_RELEASE_API = "https://api.github.com/repos/Prism-Linux/prism-linux-control-center/releases/latest";
+const PRERELEASES_API = "https://api.github.com/repos/Prism-Linux/prism-linux-control-center/releases?per_page=20";
 const LEGACY_STABLE_RELEASES_URL = "https://github.com/sgtaziz/lian-li-linux/releases";
-const PRISM_RELEASES_URL = "https://github.com/sgtaziz/prism-linux-control-center/releases";
+const PRISM_RELEASES_URL = "https://github.com/Prism-Linux/prism-linux-control-center/releases";
 const ENABLED_KEY = "lianli-linux.updateCheck";
 const CACHE_KEY = "lianli-linux.updateCache";
 const DISMISSED_KEY = "lianli-linux.updateDismissed";

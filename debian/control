@@ -9,7 +9,7 @@ Build-Depends: debhelper-compat (= 13), appstream, cargo, rustc, clang, cmake, n
  libayatana-appindicator3-dev, librsvg2-dev, libdrm-dev
 Standards-Version: 4.7.0
 Rules-Requires-Root: no
-Homepage: https://github.com/sgtaziz/prism-linux-control-center
+Homepage: https://github.com/Prism-Linux/prism-linux-control-center
 
 Package: lian-li-linux
 Architecture: amd64

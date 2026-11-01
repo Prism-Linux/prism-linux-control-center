@@ -2,7 +2,7 @@
 
 1) Clone the repo and submodules:
 ```bash
-git clone --recurse-submodules https://github.com/sgtaziz/prism-linux-control-center.git && cd prism-linux-control-center
+git clone --recurse-submodules https://github.com/Prism-Linux/prism-linux-control-center.git && cd prism-linux-control-center
 ```
 > If you already cloned without `--recurse-submodules`, run: `git submodule update --init --recursive`
 

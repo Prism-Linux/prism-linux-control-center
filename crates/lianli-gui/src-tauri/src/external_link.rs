@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn only_plain_https_links_are_opened() {
-        assert!(validate("https://github.com/sgtaziz/prism-linux-control-center").is_ok());
+        assert!(validate("https://github.com/Prism-Linux/prism-linux-control-center").is_ok());
         assert!(validate("http://example.com").is_err());
         assert!(validate("file:///etc/passwd").is_err());
         assert!(validate("https://example.com/a b").is_err());

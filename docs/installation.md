@@ -4,7 +4,7 @@ Prism Linux Control Center uses distribution packages that install the GUI, daem
 
 ## Supported package targets
 
-The beta package build matrix is Ubuntu 24.04, Ubuntu 26.04 and Debian 13 on amd64. The repository retains Arch and Fedora recipes for the wider project, but Prism beta packages for those distributions have not been produced. Each Debian package must be built and smoke-tested on its target distribution because WebKitGTK, FFmpeg and system libraries vary.
+The v1.3.0-beta.1 package matrix is Ubuntu 24.04, Ubuntu 26.04 and Debian 13 on amd64. These are the only distributions for which Prism beta packages are prepared. The repository retains Arch and Fedora recipes for the wider project, but they are not release artifacts. Each Debian package is built and smoke-tested on its target distribution because WebKitGTK, FFmpeg and system libraries vary.
 
 - Debian and Ubuntu: see [package verification and installation](debian-packages.md).
 - Arch and Fedora: beta packages are not available; the recipes still track the upstream stable package channels.

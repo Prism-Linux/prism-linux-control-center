@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
 const CATALOG_BASE_URL: &str =
-    "https://raw.githubusercontent.com/sgtaziz/prism-linux-control-center/main/templates";
+    "https://raw.githubusercontent.com/Prism-Linux/prism-linux-control-center/main/templates";
 const FETCH_TIMEOUT: Duration = Duration::from_secs(10);
 const MAX_METADATA_BYTES: usize = 1024 * 1024;
 const MAX_ASSET_BYTES: usize = 64 * 1024 * 1024;

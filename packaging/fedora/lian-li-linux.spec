@@ -7,7 +7,7 @@ Summary:        Linux RGB and hardware controller with fan and LCD support
 %global evdi_version 1.15.0
 
 License:        MIT AND (GPL-2.0-only WITH Linux-syscall-note)
-URL:            https://github.com/sgtaziz/prism-linux-control-center
+URL:            https://github.com/Prism-Linux/prism-linux-control-center
 Source0:        %{name}-%{version}.tar.gz
 Source1:        https://github.com/DisplayLink/evdi/archive/refs/tags/v%{evdi_version}.tar.gz#/evdi-%{evdi_version}.tar.gz
 
