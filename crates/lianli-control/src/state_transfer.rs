@@ -1339,6 +1339,15 @@ mod tests {
                     0
                 );
             }
+            for path in [source.join("config.json"), source.join("private.png")] {
+                let file = File::open(path).unwrap();
+                assert_eq!(
+                    unsafe {
+                        libc::fchown(file.as_raw_fd(), source_account.uid, source_account.gid)
+                    },
+                    0
+                );
+            }
         }
         let generation = StateSnapshot::read(&source.join("config.json"), &source)
             .unwrap()
