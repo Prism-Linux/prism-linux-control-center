@@ -14,6 +14,9 @@ override_dh_auto_build:
 	cargo build --locked --release -p lianli-daemon -p lianli-gui -p lianli-session -p lianli-control
 
 override_dh_auto_test:
+	umask 0077 && cargo test --locked --workspace --no-run
+	chmod o+x "$(CURDIR)/.." "$(CURDIR)" "$(CURDIR)/target" "$(CURDIR)/target/debian" "$(CURDIR)/target/debian/debug" "$(CURDIR)/target/debian/debug/deps"
+	find "$(CURDIR)/target/debian/debug/deps" -maxdepth 1 -type f -perm /111 -exec chmod a+rx {} +
 	umask 0077 && cargo test --locked --workspace
 
 override_dh_auto_clean:
