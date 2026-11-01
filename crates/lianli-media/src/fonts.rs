@@ -49,19 +49,17 @@ mod tests {
     #[test]
     fn bundled_fonts_preserve_glyphs_through_runtime_and_preflight() {
         use ab_glyph::Font;
-        for relative in ["templates/assets/neon-us88/JetBrainsMonoNL-Medium.ttf"] {
-            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../..")
-                .join(relative);
-            let font = load(&path).unwrap();
-            assert_ne!(font.glyph_id('A').0, 0);
-            crate::validation::check_still(
-                File::open(path).unwrap(),
-                lianli_shared::media_dependencies::AssetKind::Font,
-                None,
-            )
-            .unwrap();
-        }
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("templates/assets/neon-us88/JetBrainsMonoNL-Medium.ttf");
+        let font = load(&path).unwrap();
+        assert_ne!(font.glyph_id('A').0, 0);
+        crate::validation::check_still(
+            File::open(path).unwrap(),
+            lianli_shared::media_dependencies::AssetKind::Font,
+            None,
+        )
+        .unwrap();
     }
 
     #[test]
