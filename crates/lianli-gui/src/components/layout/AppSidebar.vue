@@ -7,6 +7,7 @@ import { useTranslate } from "@/i18n";
 import { MAIN_ROUTES } from "@/router";
 import { useDaemonStore } from "@/stores/daemon";
 import { useDevicesStore } from "@/stores/devices";
+import prismIcon from "@/assets/branding/prism-circuit-p-icon.png";
 
 const daemon = useDaemonStore();
 const devices = useDevicesStore();
@@ -36,7 +37,7 @@ function iconFor(name: string) {
 <template>
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-mark"><icons.Sparkles :size="18" /></div>
+      <div class="brand-mark"><img :src="prismIcon" alt="" /></div>
       <div class="brand-text"><div class="brand-title">Prism Linux Control Center</div><div class="brand-subtitle">Linux hardware control · v{{ APP_VERSION }}</div></div>
     </div>
 
@@ -82,7 +83,8 @@ function iconFor(name: string) {
   gap: 10px;
   padding: 7px 7px 23px;
 }
-.brand-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:14px;color:#d2e6ff;background:linear-gradient(140deg,rgba(59,145,255,.32),rgba(176,78,255,.25));border:1px solid rgba(135,182,255,.37);box-shadow:0 0 20px rgba(82,132,255,.16),inset 0 1px rgba(255,255,255,.15)}
+.brand-mark{width:42px;height:42px;flex-shrink:0;border-radius:14px;overflow:hidden}
+.brand-mark img{display:block;width:100%;height:100%;object-fit:contain}
 .brand-title {
   font-weight: 700;
   font-size: 13px;

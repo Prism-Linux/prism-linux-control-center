@@ -52,5 +52,11 @@ assert.equal(crypto.createHash('sha256').update(logoBytes).digest('hex'),
   'About image matches the README logo asset');
 assert(fs.readFileSync(path.join(root, 'README.md'), 'utf8').includes(`assets/branding/${logo}`));
 assert(fs.readFileSync(path.join(root, 'crates/lianli-gui/src/views/SettingsPage.vue'), 'utf8').includes(`@/assets/branding/${logo}`));
+const icon = 'prism-circuit-p-icon.png';
+const iconBytes = fs.readFileSync(path.join(root, 'assets/branding', icon));
+assert.equal(crypto.createHash('sha256').update(iconBytes).digest('hex'),
+  crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'crates/lianli-gui/src/assets/branding', icon))).digest('hex'),
+  'Sidebar image matches the extracted application icon');
+assert(fs.readFileSync(path.join(root, 'crates/lianli-gui/src/components/layout/AppSidebar.vue'), 'utf8').includes(`@/assets/branding/${icon}`));
 
-console.log(`Verified ${sizes.length} Linux/Tauri icon sizes, desktop package paths, and README/About logo assets.`);
+console.log(`Verified ${sizes.length} Linux/Tauri icon sizes, desktop package paths, and README/About/sidebar branding assets.`);
