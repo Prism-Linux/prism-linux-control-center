@@ -1,5 +1,6 @@
 use std::fs::{self, File};
 use std::os::fd::AsRawFd;
+use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -43,6 +44,7 @@ fn isolated_decode_uses_the_open_descriptor_without_starting_hardware_or_writing
     image::RgbImage::from_pixel(2, 3, image::Rgb([40, 50, 60]))
         .save_with_format(&source, image::ImageFormat::Png)
         .unwrap();
+    fs::set_permissions(&source, fs::Permissions::from_mode(0o644)).unwrap();
     let image = File::open(&source).unwrap();
     let video = File::open(&source).unwrap();
     fs::remove_file(&source).unwrap();
@@ -63,6 +65,7 @@ fn readable_invalid_media_and_mutable_descriptors_cannot_pass_validation() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");
     fs::write(&source, b"readable but undecodable").unwrap();
+    fs::set_permissions(&source, fs::Permissions::from_mode(0o644)).unwrap();
     for kind in ["image", "font", "video"] {
         let output = decode(root.path(), File::open(&source).unwrap(), kind);
         assert!(!output.status.success(), "{kind}");
@@ -88,8 +91,10 @@ fn software_video_validation_requires_a_decoded_frame_and_accepts_gif_and_h264()
     let image = image::RgbImage::from_pixel(4, 4, image::Rgb([255, 0, 0]));
     let gif = root.path().join("animation.gif");
     image.save(&gif).unwrap();
+    fs::set_permissions(&gif, fs::Permissions::from_mode(0o644)).unwrap();
     let source = root.path().join("source.png");
     image.save(&source).unwrap();
+    fs::set_permissions(&source, fs::Permissions::from_mode(0o644)).unwrap();
     let movie = root.path().join("movie.mkv");
     let mut command = Command::new("ffmpeg");
     command
@@ -107,6 +112,7 @@ fn software_video_validation_requires_a_decoded_frame_and_accepts_gif_and_h264()
         .arg(&movie);
     let output = lianli_control::command::run(command, Duration::from_secs(20)).unwrap();
     assert!(output.status.success(), "{}", output.stderr);
+    fs::set_permissions(&movie, fs::Permissions::from_mode(0o644)).unwrap();
     for path in [&gif, &movie] {
         let output = decode(root.path(), File::open(path).unwrap(), "video");
         assert!(output.status.success(), "{}", output.stderr);
