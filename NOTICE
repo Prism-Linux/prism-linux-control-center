@@ -1,0 +1,18 @@
+Prism Linux Control Center is a separately maintained derivative of Lian Li Linux.
+
+The upstream source project is https://github.com/sgtaziz/lian-li-linux. This
+source tree descends from upstream commit
+896593b3b84f0d9225471222a319c4c95144c635. The upstream copyright and MIT
+license notice are preserved in LICENSE. Existing third-party notices remain
+with their respective source and asset files.
+
+Prism branding and later changes do not replace or erase upstream attribution.
+Original Prism Linux Control Center contributions by Major Riven are licensed
+under MIT. This does not change the license of upstream or third-party material.
+See THIRD_PARTY_NOTICES.md for the included component notices and dependency
+license inventory.
+
+The project is not affiliated with or endorsed by Lian Li, ASUS, G.Skill,
+Gigabyte, or other hardware manufacturers referenced in the source or
+documentation. Their product names and marks belong to their respective
+owners.

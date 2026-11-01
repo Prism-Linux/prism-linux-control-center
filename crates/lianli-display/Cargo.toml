@@ -1,0 +1,23 @@
+[package]
+name = "lianli-display"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+lianli-evdi = { path = "../lianli-evdi" }
+lianli-shared = { path = "../lianli-shared" }
+libloading = "0.8.9"
+glow = "0.16"
+libc = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+socket2 = { version = "0.6", features = ["all"] }
+tracing = { workspace = true }
+wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

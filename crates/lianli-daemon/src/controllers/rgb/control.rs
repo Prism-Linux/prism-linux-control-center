@@ -1,0 +1,425 @@
+use super::*;
+
+impl RgbController {
+    pub fn prepare_group_write(
+        &self,
+        id: &str,
+        effects: &[RgbEffect],
+    ) -> anyhow::Result<Arc<dyn RgbDevice>> {
+        self.ensure_individual_control(id)?;
+        anyhow::ensure!(
+            self.is_openrgb_controlled() || !self.thermal_override_active(),
+            "thermal alert currently controls RGB"
+        );
+        let device = self
+            .wired
+            .get(id)
+            .ok_or_else(|| anyhow::anyhow!("RGB device is unavailable: {id}"))?;
+        anyhow::ensure!(!device.rf_owned(), "RGB device is controlled over RF");
+        let regions = device.hardware_regions();
+        anyhow::ensure!(
+            !effects.is_empty() && effects.len() <= regions.len(),
+            "Invalid group effects"
+        );
+        for (index, effect) in effects.iter().enumerate() {
+            anyhow::ensure!(
+                !effects[..index]
+                    .iter()
+                    .any(|other| other.scope == effect.scope),
+                "Duplicate group region"
+            );
+            let spec = regions
+                .iter()
+                .find(|region| region.scope == effect.scope)
+                .and_then(|region| region.effects.iter().find(|spec| spec.mode == effect.mode))
+                .ok_or_else(|| anyhow::anyhow!("Unsupported group mode or region"))?;
+            spec.validate_values(
+                effect.speed as u32,
+                effect.brightness as u32,
+                effect.colors.len(),
+                device.zone_info().len(),
+            )
+            .map_err(anyhow::Error::msg)?;
+        }
+        Ok(Arc::clone(device))
+    }
+
+    pub fn cache_group_effects(
+        &mut self,
+        id: String,
+        device: &Arc<dyn RgbDevice>,
+        effects: Vec<RgbEffect>,
+    ) {
+        if self
+            .wired
+            .get(&id)
+            .is_some_and(|current| Arc::ptr_eq(current, device))
+        {
+            self.last_group_effects.insert(id, effects);
+        }
+    }
+
+    pub fn set_effect(&mut self, id: &str, zone: u8, effect: &RgbEffect) -> anyhow::Result<()> {
+        self.ensure_individual_control(id)?;
+        anyhow::ensure!(
+            self.is_openrgb_controlled() || !self.thermal_override_active(),
+            "thermal alert currently controls RGB"
+        );
+        if self.software_controlled(id) {
+            let mut state = self.render_state(id)?;
+            if let Some(profile) = self
+                .regional_profile(id)
+                .filter(|_| effect.mode != RgbMode::Direct)
+            {
+                anyhow::ensure!(
+                    zone == 0,
+                    "animation modes apply to the device group, not individual fans"
+                );
+                let mut effect = effect.clone();
+                if profile.family == lianli_shared::rgb::RgbRenderFamily::HydroShiftII
+                    && effect.scope == lianli_shared::rgb::RgbScope::All
+                {
+                    effect.scope = lianli_shared::rgb::RgbScope::Pump;
+                }
+                let mut regions = state.regions.take().unwrap_or_default();
+                let flip = regions.first().is_some_and(|region| region.flip);
+                if effect.scope == lianli_shared::rgb::RgbScope::All {
+                    regions.clear();
+                } else if let Some(all) = regions
+                    .iter()
+                    .find(|r| r.effect.scope == lianli_shared::rgb::RgbScope::All)
+                    .cloned()
+                {
+                    regions = regions::expand_all(profile, &all);
+                }
+                regions.retain(|region| region.effect.scope != effect.scope);
+                regions.push(lianli_shared::rgb::RgbRegionConfig { effect, flip });
+                state.regions = Some(regions);
+                return self.apply_render(id, state);
+            }
+            state.set_effect(zone, effect)?;
+            self.apply_render(id, state)?;
+            return Ok(());
+        }
+        if let Some(device) = self.wired.get(id) {
+            anyhow::ensure!(
+                device.supported_modes().contains(&effect.mode),
+                "RGB effect {:?} is not supported by {id}",
+                effect.mode
+            );
+            device.set_zone_effect(zone, effect)?;
+            return Ok(());
+        }
+        anyhow::bail!("RGB device is unavailable or has an unsupported layout: {id}")
+    }
+
+    pub fn cache_direct_zone(
+        &mut self,
+        id: &str,
+        device: &Arc<dyn RgbDevice>,
+        zone: u8,
+        colors: Vec<[u8; 3]>,
+    ) {
+        if self
+            .wired
+            .get(id)
+            .is_some_and(|current| Arc::ptr_eq(current, device))
+        {
+            self.last_direct.insert((id.to_owned(), zone), colors);
+        }
+    }
+
+    pub fn set_direct_colors(
+        &mut self,
+        id: &str,
+        zone: u8,
+        colors: &[[u8; 3]],
+    ) -> anyhow::Result<()> {
+        self.ensure_individual_control(id)?;
+        anyhow::ensure!(
+            self.is_openrgb_controlled() || !self.thermal_override_active(),
+            "thermal alert currently controls RGB"
+        );
+        if self.software_controlled(id) {
+            let mut state = self.render_state(id)?;
+            state.set_direct(zone, colors)?;
+            self.apply_render(id, state)?;
+        } else if let Some(device) = self.wired.get(id) {
+            device.set_direct_colors(zone, colors)?;
+        } else {
+            anyhow::bail!("RGB device is unavailable or has an unsupported layout: {id}");
+        }
+        self.last_direct
+            .insert((id.to_owned(), zone), colors.to_vec());
+        Ok(())
+    }
+
+    pub fn apply_wireless_batch(
+        &mut self,
+        id: &str,
+        zones: &HashMap<u8, Vec<[u8; 3]>>,
+    ) -> anyhow::Result<()> {
+        self.ensure_individual_control(id)?;
+        anyhow::ensure!(
+            self.software_controlled(id),
+            "device {id} does not support software RGB"
+        );
+        let mut state = self.render_state(id)?;
+        for (&zone, colors) in zones {
+            state.set_direct(zone, colors)?;
+        }
+        self.apply_render(id, state)?;
+        for (&zone, colors) in zones {
+            self.last_direct
+                .insert((id.to_owned(), zone), colors.clone());
+        }
+        Ok(())
+    }
+
+    pub(super) fn is_wireless_rgb(&self, id: &str) -> bool {
+        self.wireless_state.contains_key(id) && self.software_controlled(id)
+    }
+
+    pub(super) fn wireless_live_layout(&self, id: &str) -> Option<(Vec<usize>, Vec<[u8; 3]>)> {
+        if !self.is_wireless_rgb(id) {
+            return None;
+        }
+        let state = self.render_state(id).ok()?;
+        Some((state.counts, state.colors))
+    }
+
+    pub(super) fn wireless_loop_target(
+        &self,
+        id: &str,
+    ) -> anyhow::Result<(Arc<WirelessController>, [u8; 6])> {
+        self.ensure_individual_control(id)?;
+        anyhow::ensure!(self.is_wireless_rgb(id), "RGB device not found: {id}");
+        let wireless = self
+            .wireless
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("wireless controller is unavailable"))?;
+        Ok((wireless, self.wireless_state[id].mac))
+    }
+
+    pub(super) fn submit_wireless_loop(
+        &mut self,
+        id: &str,
+        wireless: &Arc<WirelessController>,
+        upload: Arc<WirelessRgbUpload>,
+        colors: &[[u8; 3]],
+    ) -> anyhow::Result<()> {
+        let (current, mac) = self.wireless_loop_target(id)?;
+        anyhow::ensure!(
+            Arc::ptr_eq(&current, wireless),
+            "wireless controller changed"
+        );
+        let mut state = self.render_state(id)?;
+        anyhow::ensure!(
+            state.colors.len() == colors.len(),
+            "RGB device layout changed"
+        );
+        self.upload_worker
+            .submit(current, mac, Command::Upload(upload.clone()))?;
+        self.uploads.insert(id.to_owned(), upload);
+        state.colors.copy_from_slice(colors);
+        state.effects.fill(None);
+        state.regions = None;
+        for zone in 0..state.counts.len() as u8 {
+            let range = state.range(zone)?;
+            self.last_direct
+                .insert((id.to_owned(), zone), colors[range].to_vec());
+        }
+        // The loop replaces the last single-frame upload, so an identical
+        // live frame must not be skipped as already applied.
+        self.applied.remove(id);
+        self.rendered.insert(id.to_owned(), state);
+        self.mb_sync_state.insert(id.to_owned(), false);
+        Ok(())
+    }
+
+    pub(super) fn wireless_upload_current(
+        &self,
+        id: &str,
+        upload: &Arc<WirelessRgbUpload>,
+    ) -> bool {
+        self.uploads
+            .get(id)
+            .is_some_and(|current| Arc::ptr_eq(current, upload))
+    }
+
+    pub fn resync_wireless_direct_colors(&mut self) {
+        self.resync_wireless_effects();
+    }
+
+    pub fn resync_wireless_effects(&mut self) {
+        if self.config.as_ref().is_some_and(|config| !config.enabled) {
+            return;
+        }
+        if let Some(wireless) = &self.wireless {
+            for (id, upload) in &self.uploads {
+                if self.mb_sync_state.get(id) == Some(&true) {
+                    continue;
+                }
+                if let Some(device) = self.wireless_state.get(id) {
+                    let already_applied =
+                        wireless
+                            .device_by_mac(&device.mac)
+                            .is_some_and(|discovered| {
+                                !discovered.is_sync_mb_light
+                                    && discovered.effect_index == upload.effect_index()
+                            });
+                    if already_applied {
+                        continue;
+                    }
+                    if let Err(error) = self.upload_worker.submit(
+                        wireless.clone(),
+                        device.mac,
+                        Command::Upload(upload.clone()),
+                    ) {
+                        debug!("RGB resync failed for {id}: {error}");
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn set_rgb_frames(
+        &mut self,
+        id: &str,
+        frames: &[Vec<[u8; 3]>],
+        interval_ms: u16,
+    ) -> anyhow::Result<()> {
+        self.ensure_individual_control(id)?;
+        anyhow::ensure!(
+            self.is_openrgb_controlled() || !self.thermal_override_active(),
+            "thermal alert currently controls RGB"
+        );
+        anyhow::ensure!(
+            self.software_controlled(id),
+            "device {id} does not support software RGB"
+        );
+        anyhow::ensure!(
+            interval_ms >= FRAME_INTERVAL_MS,
+            "RGB animation is limited to 20 frames per second"
+        );
+        let mut state = self.render_state(id)?;
+        anyhow::ensure!(
+            !frames.is_empty() && frames.len() <= 2048,
+            "invalid RGB frame count"
+        );
+        anyhow::ensure!(
+            frames.iter().all(|frame| frame.len() == state.colors.len()),
+            "RGB frame does not match device layout"
+        );
+        if let Some(device) = self.wired.get(id) {
+            self.wired_renderer
+                .submit(id, device.clone(), frames.to_vec(), interval_ms)?;
+        } else if let (Some(wireless), Some(device)) = (&self.wireless, self.wireless_state.get(id))
+        {
+            let upload = Arc::new(wireless.prepare_rgb_upload(&device.mac, frames, interval_ms)?);
+            self.upload_worker.submit(
+                wireless.clone(),
+                device.mac,
+                Command::Upload(upload.clone()),
+            )?;
+            self.uploads.insert(id.to_owned(), upload);
+        } else {
+            anyhow::bail!("RGB device not found: {id}");
+        }
+        state.colors.copy_from_slice(&frames[0]);
+        state.effects.fill(None);
+        state.regions = None;
+        self.applied.remove(id);
+        self.rendered.insert(id.to_owned(), state);
+        self.mb_sync_state.insert(id.to_owned(), false);
+        Ok(())
+    }
+
+    pub fn set_mb_rgb_sync(&mut self, id: &str, enabled: bool) -> anyhow::Result<()> {
+        if enabled && self.mb_sync_state.get(id) != Some(&true) {
+            self.ensure_individual_control(id)?;
+        }
+        anyhow::ensure!(
+            !enabled || self.is_openrgb_controlled() || !self.thermal_override_active(),
+            "thermal alert currently controls RGB"
+        );
+        let affected = self.mb_sync_siblings(id);
+        let already_selected = self.mb_sync_state.get(id) == Some(&enabled);
+        if !already_selected {
+            if let Some(device) = self.wired.get(id) {
+                anyhow::ensure!(
+                    device.supports_mb_rgb_sync(),
+                    "Device {id} does not support MB RGB sync"
+                );
+                self.wired_renderer.remove(id);
+                device.set_mb_rgb_sync(enabled)?;
+            } else if let (Some(wireless), Some(device)) =
+                (&self.wireless, self.wireless_state.get(id))
+            {
+                anyhow::ensure!(
+                    device.fan_type.supports_mb_rgb_sync(),
+                    "Device {id} does not support MB RGB sync"
+                );
+                self.upload_worker.submit(
+                    wireless.clone(),
+                    device.mac,
+                    Command::MotherboardSync(enabled),
+                )?;
+            } else {
+                anyhow::bail!("RGB device not found: {id}");
+            }
+        }
+        for sibling in affected {
+            // SL-Infinity's 0x61 mode is controller-wide. Stop every software/direct
+            // writer attached to its sibling groups before those writers can race the
+            // motherboard input. Configuration reload starts software output again on OFF.
+            self.clear_device_pending(&sibling);
+            self.mb_sync_state.insert(sibling, enabled);
+        }
+        Ok(())
+    }
+
+    fn mb_sync_siblings(&self, id: &str) -> Vec<String> {
+        if let Some((base, _)) = id.rsplit_once(":group") {
+            self.wired
+                .keys()
+                .filter(|key| {
+                    key.rsplit_once(":group")
+                        .is_some_and(|(other, _)| other == base)
+                })
+                .cloned()
+                .collect()
+        } else {
+            vec![id.to_owned()]
+        }
+    }
+
+    /// Last motherboard-sync mode selected by a fully accepted controller write. This is
+    /// software state only; ENE 6K77 does not expose confirmed active-mode readback.
+    pub fn last_accepted_mb_rgb_sync(&self, id: &str) -> Option<bool> {
+        self.mb_sync_state.get(id).copied()
+    }
+
+    pub fn mb_rgb_sync_active(&self, id: &str) -> bool {
+        self.mb_sync_state.get(id) == Some(&true)
+    }
+
+    pub fn set_fan_direction(
+        &self,
+        id: &str,
+        zone: u8,
+        swap_lr: bool,
+        swap_tb: bool,
+    ) -> anyhow::Result<()> {
+        self.ensure_individual_control(id)?;
+        let device = self
+            .wired
+            .get(id)
+            .ok_or_else(|| anyhow::anyhow!("RGB device not found: {id}"))?;
+        anyhow::ensure!(
+            device.supports_direction(),
+            "Device {id} does not support fan direction"
+        );
+        device.set_fan_direction(zone, swap_lr, swap_tb)
+    }
+}

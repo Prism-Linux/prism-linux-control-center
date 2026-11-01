@@ -1,0 +1,333 @@
+{
+  "schema_version": 1,
+  "templates": [
+    {
+      "id": "cooler",
+      "name": "Cooler",
+      "description": "CPU cooler dashboard with speedometer, temperature bar, and per-core usage.",
+      "author": "Martin-Pfingstl",
+      "min_daemon_version": "0.3.3",
+      "folder": "cooler",
+      "template_file": "template.json",
+      "template_sha256": "e481b95a06203b94e8a10e8fd465caec3c4beac9da38a4a39c5bb0981e480ab0",
+      "preview": "preview.png",
+      "preview_sha256": "caad5444e723bb970a5276702c2d2b3b34f05e37afd3729cd0b54dd55c408684",
+      "base_width": 480,
+      "base_height": 480,
+      "rotated": false,
+      "files": [
+        {
+          "path": "background.png",
+          "sha256": "eb44186d4c46e861ee972bec550dbbc6cdd80ffeb6eb1bedee561f36ffae2bb8"
+        },
+        {
+          "path": "thermometer.png",
+          "sha256": "258870af82c033137c2af01322dab1e6d3eaba255d46b26d1643c3961505be7e"
+        }
+      ]
+    },
+    {
+      "id": "doublegauge",
+      "name": "Doublegauge",
+      "description": "Concentric radial gauges for CPU usage and temperature.",
+      "author": "Martin-Pfingstl",
+      "min_daemon_version": "0.3.3",
+      "folder": "doublegauge",
+      "template_file": "template.json",
+      "template_sha256": "7744722ae2ec03d56429d7330bcdca4629081e331eab58d3981776b811a234b2",
+      "preview": "preview.png",
+      "preview_sha256": "00977837140cf85d175c7142413c4b791dfb391a580791e9b3feeab2535f084e",
+      "base_width": 400,
+      "base_height": 400,
+      "rotated": false,
+      "files": [
+        {
+          "path": "background.png",
+          "sha256": "cdf1109db93d2fdde6f8b3c00b501a721e153e58b781475c537e03e9bed6f8d6"
+        }
+      ]
+    },
+    {
+      "id": "sensor_gauge",
+      "name": "Sensor Gauge",
+      "description": "Single-sensor radial gauge matching the legacy Sensor media type.",
+      "author": "sgtaziz",
+      "min_daemon_version": "0.3.4",
+      "folder": "sensor_gauge",
+      "template_file": "template.json",
+      "template_sha256": "1bfec2a0479b771e6ad79abaad40e8a74be38c2d61b7b177920b986c5d312475",
+      "preview": "preview.png",
+      "preview_sha256": "aa1538a601b782e567c8ca24c5852ac33c658a9ad4cb4c3f4143967dbccb0ba8",
+      "base_width": 400,
+      "base_height": 400,
+      "rotated": false,
+      "files": []
+    },
+    {
+      "id": "us88-skeleton",
+      "name": "Universal Screen 8.8\" Skeleton",
+      "description": "CPU, GPU, and RAM dashboard laid out across the 1920×480 Universal Screen 8.8\", over a dark skeleton backdrop.",
+      "author": "hanzzz2909",
+      "min_daemon_version": "0.3.4",
+      "folder": "us88-skeleton",
+      "template_file": "template.json",
+      "template_sha256": "7e007642cba46781caeb7afea42cd90400c68289a870daf5d86625fe499bf2f4",
+      "preview": "preview.png",
+      "preview_sha256": "5fff9ebb97d19a7fd047618a9aa58e900bd01d1f8e553cb2c037ec5988e27190",
+      "base_width": 1920,
+      "base_height": 480,
+      "rotated": true,
+      "files": [
+        {
+          "path": "background.jpg",
+          "sha256": "5d8f76cf96bb80d35bc4354c0d171e54f889a7e948dd6d0339c3011082237ed6"
+        }
+      ]
+    },
+    {
+      "id": "neon-us88",
+      "name": "Neon",
+      "description": "Neon dashboard for the Universal Screen 8.8\": radial CPU/GPU gauges, analog and digital clocks, RAM/disk readouts, CPU/GPU temperature graphs, and network throughput sparklines.",
+      "author": "sgtaziz",
+      "min_daemon_version": "0.4.1",
+      "folder": "neon-us88",
+      "template_file": "template.json",
+      "template_sha256": "b77af5e9fe6ee40a3c88948931b8d8a45666c4c42e47bb89c74fcf519bdbdf1b",
+      "preview": "preview.png",
+      "preview_sha256": "d37c21f0002b0ccb576c3ec375e81a264c815d0d263378796c10a5ac595959de",
+      "base_width": 1920,
+      "base_height": 480,
+      "rotated": true,
+      "files": [
+        {
+          "path": "background.png",
+          "sha256": "3a8b4c55868753c954a436cb85aaa2e10de20aed8b9d98caccc511900ca340a7"
+        },
+        {
+          "path": "animation.apng",
+          "sha256": "5ce7e8539240491a9767d45a1d880d62e18e3978bf7fbe55e2ef781f5b78db74"
+        },
+        {
+          "path": "JetBrainsMonoNL-Medium.ttf",
+          "sha256": "44099e1efefba55637e0abbbf8dd3f526e59523345888a257bb01d39df4af74c"
+        },
+        {
+          "path": "OFL.txt",
+          "sha256": "30f0c136e3c88e422d0791acd97238870f9054a9729bc34cf2ff0d4ed8cac4ad"
+        }
+      ]
+    },
+    {
+      "id": "perfmon-92",
+      "name": "Perfmon 9.2",
+      "description": "Six-gauge landscape system monitor: CPU/GPU temp and load, RAM, NVMe.",
+      "author": "k1nch0",
+      "min_daemon_version": "0.3.4",
+      "folder": "perfmon-92",
+      "template_file": "template.json",
+      "template_sha256": "bd265746e88061f804f2cd73efd44631efc8082d0dddd746c4b6c04749052659",
+      "preview": "preview.png",
+      "preview_sha256": "e4ac904329ff54c84946d2aea1c41202b8b621e4dbdb6eafcdb3579dbf4b1d42",
+      "base_width": 1920,
+      "base_height": 464,
+      "rotated": false,
+      "files": []
+    },
+    {
+      "id": "hs2-oled-curve",
+      "name": "HydroShift II OLED Curve",
+      "description": "Six-ring monitor shaped to the curved OLED: CPU and GPU load/temp in a 2x2 grid on the flat front face, RAM and NVMe temperature on the side face, with the bend left clear.",
+      "author": "k1nch0",
+      "min_daemon_version": "0.7.0",
+      "folder": "hs2-oled-curve",
+      "template_file": "template.json",
+      "template_sha256": "df8df6c1ef371c15f36cfed33040647ec2b6cceda71cd44d1a20fa2d89b405d0",
+      "preview": "preview.png",
+      "preview_sha256": "0b4c997d044399751dc41abaae64a30b6cdd54c65cbf74930ac0e1a3752fd9bf",
+      "base_width": 2288,
+      "base_height": 1080,
+      "rotated": false,
+      "files": []
+    },
+    {
+      "id": "cyber-rain-horizontal",
+      "name": "Cyber Rain / Mustard",
+      "description": "Bright rainy cyberpunk dashboard with analog CPU/GPU and network gauges, RAM, free disk space and NVMe temperature.",
+      "author": "marvinduranr",
+      "min_daemon_version": "1.2.0",
+      "folder": "cyber-rain-horizontal",
+      "template_file": "template.json",
+      "template_sha256": "09bf0d27f7847180e4f07fdc3baa679ac566d3bd5f093ccaff1d5cdcb619f7ea",
+      "preview": "preview.jpg",
+      "preview_sha256": "0e33903e0d3621ef827dca6c34070cb875d345e838e2ec5ad117756b3e1ca976",
+      "base_width": 1920,
+      "base_height": 480,
+      "rotated": true,
+      "files": [
+        {
+          "path": "CREDITS.md",
+          "sha256": "05f3798121f5a595cbe255000ca40f9e2bc8ea59558b8bada788d37f3adc0c46"
+        },
+        {
+          "path": "JetBrainsMono-Bold.ttf",
+          "sha256": "d22c4f3821d725eb01210d278d95dfcfcaadc34699a06658d47c8a5cc5830ada"
+        },
+        {
+          "path": "JetBrainsMono-OFL.txt",
+          "sha256": "a76abf002c49097d146e86740a3105a5d00450b1592e820a1109a8c5680cd697"
+        },
+        {
+          "path": "README.md",
+          "sha256": "6b7521d2eb9bb12810012a5e9d7b0187bdfb7e9a0cc950fde825dc10d23c0bf1"
+        },
+        {
+          "path": "Rajdhani-OFL.txt",
+          "sha256": "f62ef357d3a1c3d27edd35a6e1ba350e8a8d13499797964eeadefbf0b3b15d1f"
+        },
+        {
+          "path": "Rajdhani-SemiBold.ttf",
+          "sha256": "94bbd25a18ca665999feb05a537de9fd2b860dcfb78bbe9ca00270825bf235da"
+        },
+        {
+          "path": "panels.png",
+          "sha256": "c886d5704a1f0d773c141fc242f96080992c10b6b05f499b141ece535354b265"
+        },
+        {
+          "path": "rain-city.png",
+          "sha256": "e8f378cd5662a86b853ac608522a9aedbbe26b8b6f89b1ea3eb6a8aeeda286cf"
+        }
+      ]
+    },
+    {
+      "id": "retro-lcd-amber-horizontal",
+      "name": "Retro LCD / Amber",
+      "description": "Vintage amber seven-segment clock with date, CPU/GPU temperatures and load, and RAM usage bars.",
+      "author": "marvinduranr",
+      "min_daemon_version": "1.2.1",
+      "folder": "retro-lcd-amber-horizontal",
+      "template_file": "template.json",
+      "template_sha256": "e8e06bb0b6537a93dfbd93805ab0a4aa56a4f140e8f58c36bf31c3812c35b4e2",
+      "preview": "preview.png",
+      "preview_sha256": "d76bd4b5abafb8dc9b60f63c4575986aebf661f15acd5294b83f969cfbb39352",
+      "base_width": 1920,
+      "base_height": 480,
+      "rotated": true,
+      "files": [
+        {
+          "path": "CREDITS.md",
+          "sha256": "62a843e419bad6d2ee1453f891952ea52e4fbe8802beb731912597cca07bfd4d"
+        },
+        {
+          "path": "DSEG-LICENSE.txt",
+          "sha256": "c6ee0567859cb7cc8d992149bbd96ad359ef65fb7355f7feae0547555ffacd23"
+        },
+        {
+          "path": "DSEG7Classic-Bold.ttf",
+          "sha256": "d16181c4eeae29e695ca547ee9be437d01d4909ac1f8f349f04176dc6858873b"
+        },
+        {
+          "path": "README.md",
+          "sha256": "bab96e2b4b0257db8b4ea0804ed0ce23ec5d35bcb68ab39309e177e2533cfa06"
+        },
+        {
+          "path": "Rajdhani-OFL.txt",
+          "sha256": "f62ef357d3a1c3d27edd35a6e1ba350e8a8d13499797964eeadefbf0b3b15d1f"
+        },
+        {
+          "path": "Rajdhani-SemiBold.ttf",
+          "sha256": "94bbd25a18ca665999feb05a537de9fd2b860dcfb78bbe9ca00270825bf235da"
+        },
+        {
+          "path": "faceplate.png",
+          "sha256": "f5c3265d92a8706e93ca1c066abada1c4b541b4edc25298684487231084fc7b2"
+        }
+      ]
+    },
+    {
+      "id": "cyber-rain-blue-horizontal",
+      "name": "Cyber Rain / Blue",
+      "description": "Blue rainy cyberpunk dashboard with analog CPU/GPU and network gauges, RAM, free disk space and NVMe temperature.",
+      "author": "marvinduranr",
+      "min_daemon_version": "1.2.1",
+      "folder": "cyber-rain-blue-horizontal",
+      "template_file": "template.json",
+      "template_sha256": "216c517fa13d0570a40e11b9271e9d60ce3048d855b1484e0936e7d0341c83cf",
+      "preview": "preview.jpg",
+      "preview_sha256": "35cd8a49620552b97ec8f7628beb18bb36c7492807ec1b2f271d97b45d6c7eb3",
+      "base_width": 1920,
+      "base_height": 480,
+      "rotated": true,
+      "files": [
+        {
+          "path": "CREDITS.md",
+          "sha256": "63cb688b9a4383b43c45c054d14f83b4ebfb90be0d0680e4572f1c9d5a768b37"
+        },
+        {
+          "path": "JetBrainsMono-Bold.ttf",
+          "sha256": "d22c4f3821d725eb01210d278d95dfcfcaadc34699a06658d47c8a5cc5830ada"
+        },
+        {
+          "path": "JetBrainsMono-OFL.txt",
+          "sha256": "a76abf002c49097d146e86740a3105a5d00450b1592e820a1109a8c5680cd697"
+        },
+        {
+          "path": "README.md",
+          "sha256": "888e2ef0e9bc331040d4087cdfa39f8760bfab474213c523a4b7d2e3ca178f72"
+        },
+        {
+          "path": "Rajdhani-OFL.txt",
+          "sha256": "f62ef357d3a1c3d27edd35a6e1ba350e8a8d13499797964eeadefbf0b3b15d1f"
+        },
+        {
+          "path": "Rajdhani-SemiBold.ttf",
+          "sha256": "94bbd25a18ca665999feb05a537de9fd2b860dcfb78bbe9ca00270825bf235da"
+        },
+        {
+          "path": "panels.png",
+          "sha256": "156f53a32c143e5f7856e89b6267ffde8b8c6369f4488240e8fa360c9333b510"
+        },
+        {
+          "path": "rain-city.jpg",
+          "sha256": "6c241d8046ddbc5f22f1d3ee1b563f68fe5c4b83434584f8121aa52480011e9c"
+        }
+      ]
+    },
+    {
+      "id": "maneki-neko-horizontal",
+      "name": "Maneki Neko / Ivory",
+      "description": "Light ivory lucky-cat dashboard with CPU/GPU temperature and load bars, RAM usage and a seconds clock.",
+      "author": "marvinduranr",
+      "min_daemon_version": "1.1.6",
+      "folder": "maneki-neko-horizontal",
+      "template_file": "template.json",
+      "template_sha256": "45b392edea4ad8e7e744d18e92b25694369e3464e60d287d0a0538c9cb3491dc",
+      "preview": "preview.png",
+      "preview_sha256": "3143cb9cdc8ffb5cd7eb0f801573eb03a0d59596caddc18d94bba6d194ea8d20",
+      "base_width": 1920,
+      "base_height": 480,
+      "rotated": true,
+      "files": [
+        {
+          "path": "background.png",
+          "sha256": "ab27c265143d3bad98bf21ad4d55d4cf2ebb5a98771e647b58bff67a81751653"
+        },
+        {
+          "path": "maneki-neko.png",
+          "sha256": "3fab58644f8b07be4f6c1079a7397b9bb248a9a72f0c374baa26c5f70fd2eceb"
+        },
+        {
+          "path": "Lato-Heavy.ttf",
+          "sha256": "4ce7ec20cd9c391b271b4149ad8cf5a71301d98965403f14fc5530d017146dbb"
+        },
+        {
+          "path": "Lato-OFL.txt",
+          "sha256": "ea02980578560b53a6853c0846e411978e171132e336e8baf2c1a71e9e0eb94b"
+        },
+        {
+          "path": "CREDITS.md",
+          "sha256": "68bc81a2bfac3094f921087dd0cdfaea3ac51a00bbb8153e82a5a28d06df5492"
+        }
+      ]
+    }
+  ]
+}

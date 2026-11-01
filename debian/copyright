@@ -1,0 +1,70 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Prism Linux Control Center (derivative of Lian Li Linux)
+Source: https://github.com/sgtaziz/lian-li-linux
+
+Files: *
+Copyright: See individual source files, LICENSE, and NOTICE.
+License: MIT
+
+Files: vendor/tinyuz/*
+Copyright: 2012-2022 housisong
+License: MIT
+
+Files: vendor/HDiffPatch/*
+Copyright: 2012-2025 housisong
+           2003-2008 Yuta Mori
+License: MIT
+
+Files: drivers/asus-ec-sensors/*
+Copyright: 2021 Eugene Shalygin
+License: GPL-2+
+ This driver retains its upstream GPL-2+ notices. On Debian systems, the complete
+ license text is available in /usr/share/common-licenses/GPL-2.
+
+Files: templates/assets/cyber-rain-horizontal/JetBrainsMono-Bold.ttf templates/assets/cyber-rain-blue-horizontal/JetBrainsMono-Bold.ttf templates/assets/neon-us88/JetBrainsMonoNL-Medium.ttf
+Copyright: 2020 The JetBrains Mono Project Authors
+License: OFL-1.1
+ The original copyright and license are retained in the corresponding
+ JetBrainsMono-OFL.txt or OFL.txt file.
+
+Files: templates/assets/cyber-rain-horizontal/Rajdhani-SemiBold.ttf templates/assets/cyber-rain-blue-horizontal/Rajdhani-SemiBold.ttf templates/assets/retro-lcd-amber-horizontal/Rajdhani-SemiBold.ttf
+Copyright: 2014 Indian Type Foundry
+License: OFL-1.1
+ The original copyright and license are retained in the corresponding
+ Rajdhani-OFL.txt file.
+
+Files: templates/assets/maneki-neko-horizontal/Lato-Heavy.ttf
+Copyright: 2010-2015 Lukasz Dziedzic
+License: OFL-1.1
+ The original copyright and license are retained in Lato-OFL.txt.
+
+Files: templates/assets/retro-lcd-amber-horizontal/DSEG7Classic-Bold.ttf
+Copyright: 2017 keshikan
+License: OFL-1.1
+ The original copyright and license are retained in DSEG-LICENSE.txt.
+
+Files: crates/lianli-display/src/hermes/uapi.rs
+Copyright: Hermes-KMS contributors
+License: GPL-2.0-with-Linux-syscall-note
+ The complete license and syscall-interface exception are provided in
+ /usr/share/doc/lian-li-linux/Hermes-KMS-UAPI-LICENSE. The public ABI declarations
+ follow upstream revision 7fbdd011cc74a57c52e1beea0f98c10c5fd5f198.
+
+License: MIT
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ .
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+ .
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.

@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Installation and troubleshooting guides
+    url: https://github.com/Prism-Linux/prism-linux-control-center/tree/main/docs
+    about: Check the documentation before opening a support issue.

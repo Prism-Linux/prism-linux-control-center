@@ -1,0 +1,559 @@
+{
+  "id": "maneki-neko-horizontal",
+  "name": "Maneki Neko / Ivory",
+  "base_width": 1920,
+  "base_height": 480,
+  "rotated": true,
+  "target_device": "Universal Screen 8.8\" (480×1920)",
+  "background": {
+    "type": "image",
+    "path": "background.png"
+  },
+  "widgets": [
+    {
+      "id": "title",
+      "x": 468.0,
+      "y": 66.0,
+      "width": 820,
+      "height": 64,
+      "kind": {
+        "type": "label",
+        "text": "MANEKI NEKO",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 55,
+        "color": [
+          65,
+          54,
+          44,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "clock",
+      "x": 1647.5,
+      "y": 64.0,
+      "width": 395,
+      "height": 64,
+      "kind": {
+        "type": "clock_digital",
+        "format": "%H:%M:%S",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 61,
+        "color": [
+          65,
+          54,
+          44,
+          255
+        ],
+        "align": "right"
+      }
+    },
+    {
+      "id": "lucky cat",
+      "x": 203.5,
+      "y": 270.5,
+      "width": 273,
+      "height": 315,
+      "kind": {
+        "type": "image",
+        "path": "maneki-neko.png",
+        "opacity": 1.0,
+        "fit": "contain"
+      }
+    },
+    {
+      "id": "CPU label",
+      "x": 535.0,
+      "y": 155.0,
+      "width": 170,
+      "height": 54,
+      "kind": {
+        "type": "label",
+        "text": "CPU",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 53,
+        "color": [
+          65,
+          54,
+          44,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "CPU temperature",
+      "x": 634.5,
+      "y": 235.0,
+      "width": 385,
+      "height": 92,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "format": "{:.0}",
+        "unit": "°C",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 99,
+        "color": [
+          65,
+          54,
+          44,
+          255
+        ],
+        "align": "left",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "sensor_category": "cpu_temp"
+    },
+    {
+      "id": "CPU temperature bar",
+      "x": 641.0,
+      "y": 308.0,
+      "width": 398,
+      "height": 30,
+      "kind": {
+        "type": "horizontal_bar",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "value_min": 0,
+        "value_max": 100,
+        "background_color": [
+          239,
+          228,
+          209,
+          255
+        ],
+        "corner_radius": 15.0,
+        "ranges": [
+          {
+            "max": 60,
+            "color": [
+              84,
+              143,
+              119
+            ],
+            "alpha": 255
+          },
+          {
+            "max": 80,
+            "color": [
+              215,
+              149,
+              41
+            ],
+            "alpha": 255
+          },
+          {
+            "max": null,
+            "color": [
+              190,
+              71,
+              60
+            ],
+            "alpha": 255
+          }
+        ]
+      },
+      "sensor_category": "cpu_temp"
+    },
+    {
+      "id": "CPU load label",
+      "x": 524.5,
+      "y": 364.0,
+      "width": 165,
+      "height": 54,
+      "kind": {
+        "type": "label",
+        "text": "LOAD",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 41,
+        "color": [
+          124,
+          104,
+          81,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "CPU load",
+      "x": 745.0,
+      "y": 363.5,
+      "width": 180,
+      "height": 65,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "format": "{:.0}",
+        "unit": "%",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 59,
+        "color": [
+          65,
+          54,
+          44,
+          255
+        ],
+        "align": "left",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "sensor_category": "cpu_usage"
+    },
+    {
+      "id": "CPU load bar",
+      "x": 641.0,
+      "y": 403.5,
+      "width": 398,
+      "height": 15,
+      "kind": {
+        "type": "horizontal_bar",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "value_min": 0,
+        "value_max": 100,
+        "background_color": [
+          239,
+          228,
+          209,
+          255
+        ],
+        "corner_radius": 7.5,
+        "ranges": [
+          {
+            "max": null,
+            "color": [
+              84,
+              143,
+              119
+            ],
+            "alpha": 255
+          }
+        ]
+      },
+      "sensor_category": "cpu_usage"
+    },
+    {
+      "id": "GPU label",
+      "x": 1035.0,
+      "y": 155.0,
+      "width": 170,
+      "height": 54,
+      "kind": {
+        "type": "label",
+        "text": "GPU",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 53,
+        "color": [
+          65,
+          54,
+          44,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "GPU temperature",
+      "x": 1134.5,
+      "y": 235.0,
+      "width": 385,
+      "height": 92,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "format": "{:.0}",
+        "unit": "°C",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 99,
+        "color": [
+          65,
+          54,
+          44,
+          255
+        ],
+        "align": "left",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "sensor_category": "gpu_temp"
+    },
+    {
+      "id": "GPU temperature bar",
+      "x": 1141.0,
+      "y": 308.0,
+      "width": 398,
+      "height": 30,
+      "kind": {
+        "type": "horizontal_bar",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "value_min": 0,
+        "value_max": 100,
+        "background_color": [
+          239,
+          228,
+          209,
+          255
+        ],
+        "corner_radius": 15.0,
+        "ranges": [
+          {
+            "max": 60,
+            "color": [
+              190,
+              71,
+              60
+            ],
+            "alpha": 255
+          },
+          {
+            "max": 80,
+            "color": [
+              215,
+              149,
+              41
+            ],
+            "alpha": 255
+          },
+          {
+            "max": null,
+            "color": [
+              190,
+              71,
+              60
+            ],
+            "alpha": 255
+          }
+        ]
+      },
+      "sensor_category": "gpu_temp"
+    },
+    {
+      "id": "GPU load label",
+      "x": 1024.5,
+      "y": 364.0,
+      "width": 165,
+      "height": 54,
+      "kind": {
+        "type": "label",
+        "text": "LOAD",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 41,
+        "color": [
+          124,
+          104,
+          81,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "GPU load",
+      "x": 1245.0,
+      "y": 363.5,
+      "width": 180,
+      "height": 65,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "format": "{:.0}",
+        "unit": "%",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 59,
+        "color": [
+          65,
+          54,
+          44,
+          255
+        ],
+        "align": "left",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "sensor_category": "gpu_usage"
+    },
+    {
+      "id": "GPU load bar",
+      "x": 1141.0,
+      "y": 403.5,
+      "width": 398,
+      "height": 15,
+      "kind": {
+        "type": "horizontal_bar",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "value_min": 0,
+        "value_max": 100,
+        "background_color": [
+          239,
+          228,
+          209,
+          255
+        ],
+        "corner_radius": 7.5,
+        "ranges": [
+          {
+            "max": null,
+            "color": [
+              190,
+              71,
+              60
+            ],
+            "alpha": 255
+          }
+        ]
+      },
+      "sensor_category": "gpu_usage"
+    },
+    {
+      "id": "RAM label",
+      "x": 1575.0,
+      "y": 155.0,
+      "width": 250,
+      "height": 54,
+      "kind": {
+        "type": "label",
+        "text": "RAM",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 53,
+        "color": [
+          65,
+          54,
+          44,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "ram usage",
+      "x": 1637.0,
+      "y": 249.0,
+      "width": 390,
+      "height": 112,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "mem_usage"
+        },
+        "format": "{:.0}",
+        "unit": "%",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 121,
+        "color": [
+          65,
+          54,
+          44,
+          255
+        ],
+        "align": "left",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "sensor_category": "mem_usage"
+    },
+    {
+      "id": "RAM bar",
+      "x": 1639.5,
+      "y": 337.0,
+      "width": 395,
+      "height": 34,
+      "kind": {
+        "type": "horizontal_bar",
+        "source": {
+          "type": "mem_usage"
+        },
+        "value_min": 0,
+        "value_max": 100,
+        "background_color": [
+          239,
+          228,
+          209,
+          255
+        ],
+        "corner_radius": 17.0,
+        "ranges": [
+          {
+            "max": null,
+            "color": [
+              179,
+              131,
+              40
+            ],
+            "alpha": 255
+          }
+        ]
+      },
+      "sensor_category": "mem_usage"
+    },
+    {
+      "id": "RAM description",
+      "x": 1632.0,
+      "y": 393.5,
+      "width": 380,
+      "height": 45,
+      "kind": {
+        "type": "label",
+        "text": "MEMORY",
+        "font": {
+          "path": "Lato-Heavy.ttf"
+        },
+        "font_size": 40,
+        "color": [
+          124,
+          104,
+          81,
+          255
+        ],
+        "align": "left"
+      }
+    }
+  ]
+}

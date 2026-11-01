@@ -1,0 +1,45 @@
+[package]
+name = "lianli-devices"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+lianli-shared = { path = "../lianli-shared" }
+lianli-transport = { path = "../lianli-transport" }
+hidapi = { workspace = true }
+cbc = { workspace = true }
+des = { workspace = true }
+hex = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+parking_lot = { workspace = true }
+once_cell = { workspace = true }
+rusb = { workspace = true }
+chrono = { workspace = true }
+image = { workspace = true }
+turbojpeg = { workspace = true }
+time = { workspace = true }
+clap = { workspace = true }
+libc = { workspace = true }
+
+[build-dependencies]
+cc = { workspace = true }
+
+[[bin]]
+name = "desktop-mode-probe"
+path = "src/bin/desktop_mode_probe.rs"
+
+[[bin]]
+name = "sl-infinity-probe"
+path = "src/bin/sl_infinity_probe.rs"
+
+[[bin]]
+name = "asus-aura-probe"
+path = "src/bin/asus_aura_probe.rs"
+
+[[bin]]
+name = "asus-aura-lighting-test"
+path = "src/bin/asus_aura_lighting_test.rs"

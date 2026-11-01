@@ -1,0 +1,664 @@
+// TypeScript mirrors of the Rust shared types in crates/lianli-shared/src/.
+// Serialization formats (serde rename rules) are preserved exactly so JSON
+// round-trips against the daemon.
+
+import type { UiMessage } from "@/utils/backendText";
+
+// ─── Device families ────────────────────────────────────────────────────────
+export type DeviceFamily =
+  | "Ene6k77"
+  | "TlFan"
+  | "TlLcd"
+  | "Galahad2Trinity"
+  | "HydroShiftLcd"
+  | "Galahad2Lcd"
+  | "WirelessTx"
+  | "WirelessRx"
+  | "Slv3Lcd"
+  | "Slv3Led"
+  | "Tlv2Lcd"
+  | "Tlv2Led"
+  | "SlInf"
+  | "Clv1"
+  | "HydroShift2Lcd"
+  | "Lancool207"
+  | "UniversalScreen"
+  | "HydroShift2LcdDesktop"
+  | "Lancool207Desktop"
+  | "UniversalScreenDesktop"
+  | "WirelessAio"
+  | "WirelessStrimer"
+  | "WirelessLc217"
+  | "WirelessLed88"
+  | "WirelessV150"
+  | "StrimerPlus"
+  | "UniversalScreenLighting"
+  | "Vision9p2"
+  | "Vision9p2Desktop"
+  | "TlFlexLcd"
+  | "SlInfFlexLcd"
+  | "WiredReceiver"
+  | "HydroShift2OledCurveLcd"
+  | "HydroShift2OledCurveLed"
+  | "EdgeHub";
+
+export type RGB = [number, number, number];
+export type RGBA = [number, number, number, number];
+
+export interface DeviceInfo {
+  startup_image?: { width: number; height: number; max_jpeg_bytes: number; jpeg_target_bytes?: number | null };
+  telemetry?: {
+    serial: string | null;
+    firmware: string | null;
+    product_type: number | null;
+    product_subtype: number | null;
+    age_ms: number | null;
+    temperatures: { name: string; name_ui?: UiMessage; celsius: number | null; abnormal: boolean }[];
+    error: string | null;
+    error_ui?: UiMessage;
+  };
+  device_id: string;
+  family: DeviceFamily;
+  name: string;
+  serial: string | null;
+  vid: number;
+  pid: number;
+  has_lcd: boolean;
+  has_fan: boolean;
+  has_pump: boolean;
+  has_rgb: boolean;
+  has_pump_control?: boolean;
+  fan_count: number | null;
+  per_fan_control: boolean | null;
+  mb_sync_support: boolean;
+  pump_mb_sync_support?: boolean;
+  rgb_zone_count: number | null;
+  screen_width: number | null;
+  screen_height: number | null;
+  is_unbound_wireless: boolean;
+  wireless_bind_status?: string | null;
+  foreign_master_online?: boolean;
+  pump_rpm_range?: [number, number] | null;
+  fan_quantity?: number | null;
+  max_fan_quantity?: number | null;
+  firmware_version?: string | null;
+  supports_c_command?: boolean;
+  port_index?: [number, number] | null;
+  wireless_group_mac?: string | null;
+}
+
+export interface OpenRgbServerStatus {
+  enabled: boolean;
+  running: boolean;
+  port: number | null;
+  error: string | null;
+  error_ui?: UiMessage | null;
+}
+
+export interface PixelCleanStatus {
+  active: boolean;
+  session_id?: number | null;
+  device_id?: string | null;
+  duration_minutes: number;
+  remaining_seconds: number;
+}
+
+export interface TelemetrySnapshot {
+  lcd_brightness?: Record<string, {
+    request_id?: string | null;
+    brightness: number;
+    pending: boolean;
+    error: string | null;
+    error_ui?: UiMessage | null;
+  }>;
+  desktop_streams?: DesktopStreamStatus[];
+  media_preparation?: Record<string, {
+    startup_recovery_required?: boolean;
+    generation: number;
+    device_id: string;
+    state: "waiting_for_device" | "preparing" | "ready" | "failed";
+    error: string | null;
+    error_ui?: UiMessage | null;
+    last_playback_error?: string | null;
+    last_playback_error_ui?: UiMessage | null;
+    runtime?: {
+      stage: "failed" | "starting_source" | "autonomous_source_configured" | "frame_submitted";
+      fps_limit: number;
+      hardware_video_allowed: boolean;
+      fallback_reason: string | null;
+      fallback_reason_ui?: UiMessage | null;
+      encoder?: { name: string; software_fallback: boolean } | null;
+      h264_transfer_started?: boolean | null;
+    } | null;
+  }>;
+  fan_rpms: Record<string, number[]>;
+  coolant_temps: Record<string, number>;
+  streaming_active: boolean;
+  openrgb_status: OpenRgbServerStatus;
+  /** Active pixel cleaner sessions keyed by target ID, card index, or "all" for multi-LCD concurrency. */
+  pixel_clean_statuses?: Record<string, PixelCleanStatus>;
+  unresponsive_dongle?: WirelessDongle | null;
+}
+
+export type WirelessDongle = "transmitter" | "receiver";
+
+export interface DesktopStreamStatus {
+  bus: number;
+  address: number;
+  product_id: number;
+  state: "waiting_for_session" | "starting" | "streaming" | "paused" | "failed";
+  backend: string | null;
+  fallback_reason: string | null;
+  error: string | null;
+  error_ui?: UiMessage | null;
+  applied_generation: number | null;
+  applied_policy: { hardware_video: boolean; fps_limit: number } | null;
+  encoding?: {
+    encoder: "turbojpeg" | "libx264" | "h264_vaapi" | "h264_nvenc" | "h264_amf" | "unknown";
+    gpu_input: boolean;
+    cpu_readback_reason: "no_dma_buf" | "gpu_failure" | null;
+    software_reason: "hardware_unavailable" | "hardware_failed" | null;
+  } | null;
+}
+
+export interface DaemonInfo {
+  version: string;
+  protocol_version: number;
+  instance_id: string;
+  pid: number;
+  mode: "user" | "system" | "unknown";
+  config_path: string;
+  capabilities: string[];
+  ownership_lock?: { device: string; inode: string } | null;
+  service_invocation?: string | null;
+  service_operation_lock?: { device: string; inode: string } | null;
+}
+
+export interface AssetAccessReport {
+  uid: number;
+  checked: number;
+  failed: number;
+  issues: {
+    owner: string;
+    owner_ui?: UiMessage | null;
+    path: string | null;
+    error: string;
+    error_ui?: UiMessage | null;
+  }[];
+}
+
+export interface PollResult {
+  connected: boolean;
+  socket_path: string;
+  daemon_info?: DaemonInfo | null;
+  write_error?: string | null;
+  write_error_ui?: UiMessage | null;
+  devices: DeviceInfo[];
+  telemetry: TelemetrySnapshot;
+}
+
+// ─── Media / sensors ────────────────────────────────────────────────────────
+export type MediaType =
+  | "image"
+  | "video"
+  | "color"
+  | "gif"
+  | "sensor"
+  | "doublegauge"
+  | "cooler"
+  | "custom";
+
+export type SensorCategory =
+  | "cpu_temp"
+  | "gpu_temp"
+  | "cpu_usage"
+  | "gpu_usage"
+  | "mem_usage"
+  | "mem_used"
+  | "mem_free"
+  | "network_rx"
+  | "network_tx"
+  | "disk_read"
+  | "disk_write";
+
+/** A sensor per category for a catalog install; `null` leaves the category unbound. */
+export type SensorBindings = Partial<Record<SensorCategory, SensorSourceConfig | null>>;
+
+export type SensorSourceConfig =
+  | { type: "constant"; value: number }
+  | { type: "command"; cmd: string }
+  | { type: "hwmon"; name: string; label: string; device_path?: string }
+  | { type: "nvidia_gpu"; gpu_index?: number; metric?: "temp" | "usage" }
+  | { type: "amd_gpu_usage"; card_index?: number }
+  | { type: "wireless_coolant"; device_id: string }
+  | { type: "cpu_usage" }
+  | { type: "mem_usage" }
+  | { type: "mem_used" }
+  | { type: "mem_free" }
+  | { type: "network_rx"; iface: string }
+  | { type: "network_tx"; iface: string }
+  | { type: "disk_read"; device: string }
+  | { type: "disk_write"; device: string };
+
+export interface SensorRange {
+  max: number | null;
+  color: RGB;
+  alpha?: number;
+}
+
+export interface SensorDescriptor {
+  label: string;
+  unit: string;
+  source: SensorSourceConfig;
+  text_color: RGB;
+  background_color: RGB;
+  gauge_background_color: RGB;
+  gauge_ranges: SensorRange[];
+  update_interval_ms?: number;
+  gauge_start_angle: number;
+  gauge_sweep_angle: number;
+  gauge_outer_radius: number;
+  gauge_thickness: number;
+  bar_corner_radius: number;
+  value_font_size: number;
+  unit_font_size: number;
+  label_font_size: number;
+  font_path: string | null;
+  decimal_places: number;
+  value_offset: number;
+  unit_offset: number;
+  label_offset: number;
+}
+
+export interface DoublegaugeDescriptor {
+  header?: string;
+  gauge_1_min?: number;
+  gauge_1_max?: number;
+  value_1_min?: number;
+  value_1_max?: number;
+  display_value_1_min?: number;
+  display_value_1_max?: number;
+  clamp_1?: boolean;
+  unit_1?: string;
+  label_1?: string;
+  decimals_1?: number;
+  gauge_2_min?: number;
+  gauge_2_max?: number;
+  value_2_min?: number;
+  value_2_max?: number;
+  display_value_2_min?: number;
+  display_value_2_max?: number;
+  clamp_2?: boolean;
+  unit_2?: string;
+  label_2?: string;
+  decimals_2?: number;
+}
+
+export interface LcdConfig {
+  index?: number | null;
+  serial: string | null;
+  type: MediaType;
+  path: string | null;
+  fps: number | null;
+  update_interval_ms?: number | null;
+  rgb: RGB | null;
+  orientation: number;
+  sensor?: SensorDescriptor | null;
+  sensor_source_1?: SensorSourceConfig;
+  sensor_source_2?: SensorSourceConfig;
+  doublegauge?: DoublegaugeDescriptor | null;
+  template_id?: string | null;
+  smooth_edges?: boolean | null;
+  custom_h264?: boolean | null;
+  aio_512_frame?: boolean | null;
+  brightness?: number | null;
+  framing?: MediaFraming;
+}
+
+export interface LcdMediaProfile {
+  id: string;
+  name: string;
+  device_id: string;
+  lcd: LcdConfig;
+}
+
+export type MediaFit = "stretch" | "contain" | "cover";
+
+export interface MediaFraming {
+  fit: MediaFit;
+  zoom: number;
+  offset_x: number;
+  offset_y: number;
+}
+
+// ─── Fans ────────────────────────────────────────────────────────────────────
+export type SensorSource =
+  | { type: "hwmon"; name: string; label: string; device_path?: string }
+  | { type: "nvidia_gpu"; gpu_index?: number; metric?: "temp" | "usage" }
+  | { type: "amd_gpu_usage"; card_index?: number }
+  | { type: "command"; cmd: string }
+  | { type: "wireless_coolant"; device_id: string }
+  | { type: "cpu_usage" }
+  | { type: "mem_usage" }
+  | { type: "mem_used" }
+  | { type: "mem_free" }
+  | { type: "network_rate"; iface: string; direction: "rx" | "tx" }
+  | { type: "disk_rate"; device: string; direction: "read" | "write" };
+
+export type FanSpeed = number | string;
+
+export interface FanCurve {
+  name: string;
+  temp_source?: SensorSource | null;
+  temp_command?: string;
+  curve: [number, number][];
+}
+
+export interface FanGroup {
+  device_id?: string | null;
+  speeds: FanSpeed[];
+}
+
+export interface FanConfig {
+  speeds: FanGroup[];
+  update_interval_ms: number;
+  hysteresis_temp: number;
+  hysteresis_pwm: number;
+}
+
+// ─── RGB ────────────────────────────────────────────────────────────────────
+export type RgbMode = string;
+export type RgbDirection = "Clockwise" | "CounterClockwise" | "Up" | "Down" | "Spread" | "Gather";
+export type RgbScope = "All" | "Fan" | "Top" | "Bottom" | "Inner" | "Outer" | "Center" | "Pump" | "Front" | "Rear"
+  | "Segment1" | "Segment2" | "Segment3" | "Segment4" | "Segment5" | "Segment6";
+
+export interface RgbEffect {
+  mode: RgbMode;
+  colors: RGB[];
+  speed: number;
+  brightness: number;
+  direction: RgbDirection;
+  scope: RgbScope;
+  disabled: boolean;
+}
+
+export interface RgbZoneConfig {
+  zone_index: number;
+  effect: RgbEffect;
+  swap_lr: boolean;
+  swap_tb: boolean;
+}
+
+export interface RgbRegionConfig {
+  effect: RgbEffect;
+  flip: boolean;
+}
+
+export interface RgbEffectMemory {
+  zone?: number | null;
+  effect: RgbEffect;
+  flip: boolean;
+}
+
+export interface RgbDeviceConfig {
+  fan_led_count?: number | null;
+  device_id: string;
+  mb_rgb_sync: boolean;
+  active_preset?: string | null;
+  zones: RgbZoneConfig[];
+  regions?: RgbRegionConfig[] | null;
+  effect_memory?: RgbEffectMemory[];
+}
+
+export type RgbSyncKind = "Continuous" | "Matched";
+
+export interface MergeLightingConfig {
+  enabled: boolean;
+  kind: RgbSyncKind;
+  effect_memory?: RgbEffect[];
+  device_order: string[];
+  directions: RgbDirection[];
+  effect: RgbEffect;
+  disabled_devices: string[];
+}
+
+export interface RgbAppConfig {
+  enabled: boolean;
+  openrgb_server: boolean;
+  openrgb_port: number;
+  openrgb_regions?: boolean;
+  openrgb_per_fan_zones?: boolean;
+  devices: RgbDeviceConfig[];
+  merge_lighting?: MergeLightingConfig | null;
+}
+
+export interface RgbZoneInfo {
+  name: string;
+  name_ui?: UiMessage;
+  led_count: number;
+}
+
+export interface RgbEffectParameters {
+  mode: RgbMode;
+  min_colors: number;
+  max_colors: number;
+  per_fan_colors: boolean;
+  directions: RgbDirection[];
+  supports_speed: boolean;
+}
+
+export interface RgbDeviceCapabilities {
+  fan_led_count_control?: { zone: number; min: number; max: number; default: number } | null;
+  deferred_reason?: string;
+  deferred_reason_ui?: UiMessage;
+  hardware_group_effects?: boolean;
+  group_effect_modes?: string[];
+  zone_effect_modes?: string[];
+  device_id: string;
+  device_name: string;
+  supported_modes: RgbMode[];
+  software_modes?: RgbMode[];
+  sync_led_count?: number | null;
+  sync_effect_parameters?: RgbEffectParameters[];
+  effect_regions?: RgbScope[];
+  region_parameters?: { scope: RgbScope; effects: RgbEffectParameters[] }[];
+  effect_parameters?: RgbEffectParameters[];
+  render_profile?: {
+    family: "Tl" | "Sl" | "SlInf" | "SlInfV3" | "SlV4" | "Cl" | "P28" | "Strimer" | "HydroShiftII" | "HydroShiftIIOled" | "UniversalScreen" | "Lancool217" | "LancoolV150";
+    right_attach?: boolean;
+    fan_count: number;
+    led_count: number;
+  } | null;
+  zones: RgbZoneInfo[];
+  supports_direct: boolean;
+  supports_mb_rgb_sync: boolean;
+  total_led_count: number;
+  supported_scopes: RgbScope[][];
+  supports_direction?: boolean;
+  supports_merge_lighting?: boolean;
+  /** LEDs are driven over RF by a bound wireless device; hidden from the list. */
+  rf_owned?: boolean;
+}
+
+export interface RgbPresetZone {
+  zone: number;
+  colors?: RGB[];
+  effect?: RgbEffect | null;
+}
+
+export interface RgbPreset {
+  name: string;
+  device_id: string;
+  zones: RgbPresetZone[];
+  regions?: RgbRegionConfig[] | null;
+}
+
+// ─── AIO ──────────────────────────────────────────────────────────────────────
+export interface AioConfig {
+  pump_target_rpm: FanSpeed;
+  fan_speeds: FanSpeed[];
+  theme_index: number;
+  brightness: number;
+  rotation: number;
+  loop_interval: number;
+  cpu_temp_source: SensorSourceConfig | null;
+  cpu_load_source: SensorSourceConfig | null;
+  gpu_temp_source: SensorSourceConfig | null;
+  gpu_load_source: SensorSourceConfig | null;
+  str_color: RGBA;
+  val_color: RGBA;
+  unit_color: RGBA;
+}
+
+// ─── Thermal alert ──────────────────────────────────────────────────────────
+export interface ThermalAlertSourceSettings {
+  enabled: boolean;
+  threshold: number;
+  alert_color: RGB;
+}
+
+export interface ThermalAlertSettings {
+  cpu: ThermalAlertSourceSettings;
+  gpu: ThermalAlertSourceSettings;
+  coolant_sensor?: SensorSource | null;
+}
+
+export interface AuraLightingStatus {
+  configured_enabled: boolean;
+  worker_state: "disabled" | "connecting" | "streaming" | "reconnecting" | "stopped";
+  complete_frames_accepted: number;
+  reported_argb_channels: number | null;
+  last_error: string | null;
+  device_state_readback_available: boolean;
+}
+
+// ─── ENE 6K77 ───────────────────────────────────────────────────────────────
+export interface Ene6k77DeviceConfig {
+  fan_quantities: Record<string, number>;
+}
+
+// ─── AppConfig ───────────────────────────────────────────────────────────────
+export interface AppConfig {
+  turn_off_lcds_on_shutdown: boolean;
+  default_fps: number;
+  hardware_video: boolean;
+  hid_backend: "hidraw" | "rusb";
+  lcds: LcdConfig[];
+  lcd_profiles: LcdMediaProfile[];
+  fan_curves: FanCurve[];
+  fans: FanConfig | null;
+  rgb: RgbAppConfig | null;
+  asus_aura: {
+    rainbow_enabled: boolean;
+    reverse_argb_channels: number[];
+    rainbow_wavelength_leds: number;
+    rainbow_frequency_hz: number;
+    rainbow_phase_degrees: number;
+    rainbow_frame_interval_ms: number;
+  };
+  desktop: {
+    start_with_linux: boolean;
+    launch_minimized: boolean;
+    close_to_tray: boolean;
+  };
+  aio: Record<string, AioConfig>;
+  ene6k77: Record<string, Ene6k77DeviceConfig>;
+  thermal_alert: ThermalAlertSettings;
+  rgb_drift_detection_enabled: boolean;
+  rgb_drift_detection_interval_ms: number;
+}
+
+// ─── Templates ───────────────────────────────────────────────────────────────
+export type TextAlign = "left" | "center" | "right";
+export type BarOrientation = "horizontal" | "vertical";
+export type ImageFit = "stretch" | "contain" | "cover";
+
+export interface FontRef {
+  path?: string | null;
+}
+
+export interface GradientStop {
+  position: number;
+  color: RGB;
+  alpha?: number;
+}
+
+export interface Widget {
+  id: string;
+  kind: any;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  visible?: boolean;
+  update_interval_ms?: number | null;
+  fps?: number | null;
+  sensor_category?: SensorCategory | null;
+}
+
+export type TemplateBackground =
+  | { type: "color"; rgb: RGBA }
+  | { type: "image"; path: string };
+
+export interface LcdTemplate {
+  id: string;
+  name: string;
+  base_width: number;
+  base_height: number;
+  background: TemplateBackground;
+  widgets: Widget[];
+  rotated: boolean;
+  target_device?: string | null;
+}
+
+// ─── Sensors ─────────────────────────────────────────────────────────────────
+export type Unit = "C" | "RPM" | "V" | "FREQ" | "PERCENT" | "SIZE" | "MBps" | "WO";
+
+export interface SensorInfo {
+  source: SensorSource;
+  sensor_name: { device_name: string; sensor_name: string } | null;
+  display_name: string | null;
+  divider: number;
+  unit: Unit;
+  current_value: number | null;
+}
+
+// ─── Catalog (template browser) ──────────────────────────────────────────────
+export interface CatalogFile {
+  path: string;
+  sha256: string;
+}
+
+export interface CatalogTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  author?: string;
+  min_daemon_version: string;
+  folder: string;
+  template_file: string;
+  template_sha256: string;
+  preview: string;
+  preview_sha256: string;
+  base_width?: number;
+  base_height?: number;
+  rotated?: boolean;
+  files?: CatalogFile[];
+}
+
+export interface CatalogManifest {
+  schema_version: number;
+  templates: CatalogTemplate[];
+}
+
+// ─── IPC helpers ─────────────────────────────────────────────────────────────
+export type PendingActionKind = "bind" | "unbind" | "switch" | "fan-quantity";
+
+export const MB_SYNC_KEY = "__mb_sync__";
+export const MB_SYNC_PREFIX = "__mb_sync__:";
+
+export interface PwmHeader {
+  id: string;
+  label: string;
+}

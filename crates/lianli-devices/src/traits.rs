@@ -1,0 +1,823 @@
+use anyhow::Result;
+use lianli_shared::rgb::{
+    RgbEffect, RgbMode, RgbPlaybackTiming, RgbRenderProfile, RgbScope, RgbZoneInfo,
+};
+use lianli_shared::screen::ScreenInfo;
+use lianli_shared::ui_message::UiError;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+
+pub trait SensorDevice: Send + Sync {
+    fn telemetry(&self) -> lianli_shared::ipc::DeviceTelemetry;
+    fn invalidate(&self);
+}
+
+/// A device that can control fan speeds.
+///
+/// `duty` values passed to `set_fan_speed`, `set_fan_speeds`, and `set_pump_speed`
+/// are raw PWM in the range 0-255. Implementations scale to device-native units.
+pub trait FanDevice: Send + Sync {
+    fn set_fan_speed(&self, slot: u8, duty: u8) -> Result<()>;
+    fn set_fan_speeds(&self, duties: &[u8]) -> Result<()>;
+    fn set_selected_fan_speeds(&self, duties: &[Option<u8>]) -> Result<()> {
+        for (slot, duty) in duties
+            .iter()
+            .take(self.fan_slot_count() as usize)
+            .enumerate()
+        {
+            if let Some(duty) = duty {
+                self.set_fan_speed(slot as u8, *duty)?;
+            }
+        }
+        Ok(())
+    }
+    fn read_fan_rpm(&self) -> Result<Vec<u16>>;
+    fn fan_slot_count(&self) -> u8;
+
+    /// Per-port fan counts: `(port_index, fan_count)`.
+    /// Default: single port with `fan_slot_count()` fans.
+    fn fan_port_info(&self) -> Vec<(u8, u8)> {
+        vec![(0, self.fan_slot_count())]
+    }
+
+    /// Whether individual fans can be set to different speeds.
+    /// Default: true (per-fan). Override to false for per-port devices.
+    fn per_fan_control(&self) -> bool {
+        true
+    }
+
+    /// Whether this device supports motherboard RPM sync (hardware passthrough).
+    fn supports_mb_sync(&self) -> bool {
+        false
+    }
+
+    /// Enable or disable motherboard RPM sync for a port.
+    /// Only meaningful for devices where `supports_mb_sync()` returns true.
+    fn set_mb_rpm_sync(&self, _port: u8, _sync: bool) -> Result<()> {
+        anyhow::bail!("MB RPM sync not supported by this device")
+    }
+
+    /// Whether this device has a controllable pump.
+    fn has_pump_control(&self) -> bool {
+        false
+    }
+
+    /// Only for devices where `has_pump_control()` is true.
+    fn set_pump_speed(&self, _duty: u8) -> Result<()> {
+        anyhow::bail!("Pump speed control not supported by this device")
+    }
+
+    /// Set pump speed with an explicit PWM source selector byte
+    /// (0 = device MCU, 1 = motherboard). Mirrors the vendor behavior where
+    /// motherboard-sync mode still carries the curve-derived PWM alongside
+    /// the source byte. Devices without a source selector reject MB mode.
+    fn set_pump_speed_source(&self, source: u8, duty: u8) -> Result<()> {
+        anyhow::ensure!(source == 0, "pump motherboard sync is not supported");
+        self.set_pump_speed(duty)
+    }
+
+    fn supports_pump_mb_sync(&self) -> bool {
+        false
+    }
+
+    /// Set pump speed from a fan-curve's 0-100% output. Implementations with
+    /// a pump RPM envelope translate percent → RPM inside the envelope →
+    /// RPM→PWM table (vendor-faithful chain); the default scales percent to
+    /// a duty and forwards to `set_pump_speed_source`.
+    fn set_pump_curve_percent(&self, source: u8, percent: f32) -> Result<()> {
+        let percent = percent.clamp(0.0, 100.0);
+        self.set_pump_speed_source(source, (percent * 2.55) as u8)
+    }
+
+    /// Last-known pump RPM for wired AIOs. Returns `None` for devices
+    /// without pump telemetry.
+    fn read_pump_rpm(&self) -> Option<u16> {
+        None
+    }
+
+    /// Whether the device has finished its initialization sequence and is
+    /// ready to accept PWM control writes. Devices with long settle times
+    /// (e.g. HydroShift LCD: 10s settle + firmware read + handshake + 2s
+    /// grace) override this to gate control loops.
+    fn is_ready_for_control(&self) -> bool {
+        true
+    }
+
+    /// Poll coolant temperature from wired AIO devices (HydroShift LCD, Galahad2).
+    /// Returns `None` if the device doesn't have a coolant sensor.
+    /// Ref: PR #103 — exposes wired coolant telemetry to fan curves.
+    fn poll_coolant_temp(&self) -> Option<f32> {
+        None
+    }
+
+    fn poll_coolant_reading(&self) -> Option<lianli_shared::sensors::SensorReading> {
+        let observed_at = std::time::Instant::now();
+        self.poll_coolant_temp()
+            .map(|value| lianli_shared::sensors::SensorReading { value, observed_at })
+    }
+
+    /// Whether this device exposes a per-port daisy-chain "fan quantity" override.
+    fn supports_fan_quantity(&self) -> bool {
+        false
+    }
+
+    /// Maximum fan count per port for the quantity override (only meaningful
+    /// when `supports_fan_quantity()` is true).
+    fn max_fan_quantity_per_port(&self) -> u8 {
+        1
+    }
+
+    /// Set the per-port daisy-chain fan quantity.
+    fn set_port_fan_quantity(&self, _port: u8, _quantity: u8) -> Result<()> {
+        anyhow::bail!("Fan quantity override not supported by this device")
+    }
+
+    fn stop_pwm(&self) -> u8 {
+        0
+    }
+
+    fn wireless_link_mac(&self) -> Option<[u8; 6]> {
+        None
+    }
+
+    fn set_wireless_bound(&self, _bound: bool) {}
+
+    fn set_software_cooling_active(&self, _active: bool) {}
+
+    fn lcd_group_size(&self) -> Option<u8> {
+        None
+    }
+
+    fn reboot_lcd_group(&self, _stop: &AtomicBool) -> Result<()> {
+        anyhow::bail!("This controller does not support wired LCD recovery")
+    }
+
+    fn set_lcd_startup_theme_enabled(
+        &self,
+        _physical_slot: u8,
+        _enabled: bool,
+        _stop: &std::sync::atomic::AtomicBool,
+        _transfer: &crate::startup_image::Transfer,
+    ) -> Result<()> {
+        anyhow::bail!("This controller does not manage LCD startup themes")
+    }
+}
+
+/// Blanket forwarding impl so any `Arc<T>` can be used as a `FanDevice`
+/// without per-driver boilerplate. Required for fan controllers that share
+/// their USB handle with a sibling RGB controller (e.g. `TlFanController`
+/// paired with `TlFanPortDevice`).
+impl<T: FanDevice + ?Sized> FanDevice for Arc<T> {
+    fn set_fan_speed(&self, slot: u8, duty: u8) -> Result<()> {
+        (**self).set_fan_speed(slot, duty)
+    }
+    fn set_fan_speeds(&self, duties: &[u8]) -> Result<()> {
+        (**self).set_fan_speeds(duties)
+    }
+    fn set_selected_fan_speeds(&self, duties: &[Option<u8>]) -> Result<()> {
+        (**self).set_selected_fan_speeds(duties)
+    }
+    fn read_fan_rpm(&self) -> Result<Vec<u16>> {
+        (**self).read_fan_rpm()
+    }
+    fn fan_slot_count(&self) -> u8 {
+        (**self).fan_slot_count()
+    }
+    fn fan_port_info(&self) -> Vec<(u8, u8)> {
+        (**self).fan_port_info()
+    }
+    fn per_fan_control(&self) -> bool {
+        (**self).per_fan_control()
+    }
+    fn supports_mb_sync(&self) -> bool {
+        (**self).supports_mb_sync()
+    }
+    fn set_mb_rpm_sync(&self, port: u8, sync: bool) -> Result<()> {
+        (**self).set_mb_rpm_sync(port, sync)
+    }
+    fn has_pump_control(&self) -> bool {
+        (**self).has_pump_control()
+    }
+    fn set_pump_speed(&self, duty: u8) -> Result<()> {
+        (**self).set_pump_speed(duty)
+    }
+    fn set_pump_speed_source(&self, source: u8, duty: u8) -> Result<()> {
+        (**self).set_pump_speed_source(source, duty)
+    }
+    fn supports_pump_mb_sync(&self) -> bool {
+        (**self).supports_pump_mb_sync()
+    }
+    fn set_pump_curve_percent(&self, source: u8, percent: f32) -> Result<()> {
+        (**self).set_pump_curve_percent(source, percent)
+    }
+    fn read_pump_rpm(&self) -> Option<u16> {
+        (**self).read_pump_rpm()
+    }
+    fn is_ready_for_control(&self) -> bool {
+        (**self).is_ready_for_control()
+    }
+    fn poll_coolant_temp(&self) -> Option<f32> {
+        (**self).poll_coolant_temp()
+    }
+    fn poll_coolant_reading(&self) -> Option<lianli_shared::sensors::SensorReading> {
+        (**self).poll_coolant_reading()
+    }
+    fn supports_fan_quantity(&self) -> bool {
+        (**self).supports_fan_quantity()
+    }
+    fn max_fan_quantity_per_port(&self) -> u8 {
+        (**self).max_fan_quantity_per_port()
+    }
+    fn set_port_fan_quantity(&self, port: u8, quantity: u8) -> Result<()> {
+        (**self).set_port_fan_quantity(port, quantity)
+    }
+    fn stop_pwm(&self) -> u8 {
+        (**self).stop_pwm()
+    }
+    fn wireless_link_mac(&self) -> Option<[u8; 6]> {
+        (**self).wireless_link_mac()
+    }
+    fn set_wireless_bound(&self, bound: bool) {
+        (**self).set_wireless_bound(bound)
+    }
+    fn set_software_cooling_active(&self, active: bool) {
+        (**self).set_software_cooling_active(active)
+    }
+
+    fn lcd_group_size(&self) -> Option<u8> {
+        (**self).lcd_group_size()
+    }
+
+    fn reboot_lcd_group(&self, stop: &AtomicBool) -> Result<()> {
+        (**self).reboot_lcd_group(stop)
+    }
+
+    fn set_lcd_startup_theme_enabled(
+        &self,
+        physical_slot: u8,
+        enabled: bool,
+        stop: &std::sync::atomic::AtomicBool,
+        transfer: &crate::startup_image::Transfer,
+    ) -> Result<()> {
+        (**self).set_lcd_startup_theme_enabled(physical_slot, enabled, stop, transfer)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecoveryAction {
+    NoChange,
+    Recovered,
+}
+
+/// A device with an LCD screen.
+pub trait LcdDevice: Send + Sync {
+    fn upload_startup_image(
+        &mut self,
+        _jpeg: &[u8],
+        _stop: &AtomicBool,
+        _transfer: &crate::startup_image::Transfer,
+    ) -> Result<bool> {
+        anyhow::bail!("Startup image upload is not supported by this LCD backend")
+    }
+    fn screen_info(&self) -> &ScreenInfo;
+    fn send_jpeg_frame(&mut self, jpeg_data: &[u8]) -> Result<()>;
+    fn send_static_frame(&mut self, jpeg_data: &[u8]) -> Result<()> {
+        self.send_jpeg_frame(jpeg_data)
+    }
+    fn set_brightness(&self, brightness: u8) -> Result<()>;
+    fn set_rotation(&self, degrees: u16) -> Result<()>;
+    fn initialize(&mut self) -> Result<()>;
+    /// Long initialization can run without retaining the caller's LCD mutex.
+    fn initialization_task(&self) -> Option<Box<dyn FnOnce() -> Result<()> + Send>> {
+        None
+    }
+    /// The stop flag is polled between USB exchanges so a recovery attempt
+    /// in flight aborts promptly when the owning target is torn down.
+    /// Without it a single attempt can hold the device for over twenty
+    /// seconds of reset retries, far past the bounded join in the teardown
+    /// path.
+    fn check_and_recover_lcd(&mut self, _stop: &AtomicBool) -> Result<RecoveryAction> {
+        Ok(RecoveryAction::NoChange)
+    }
+    fn supports_c_command(&self) -> bool {
+        false
+    }
+    fn firmware_version_str(&self) -> Option<&str> {
+        None
+    }
+    fn set_use_c_command(&mut self, _enable: bool) {}
+    fn try_read_firmware(&mut self) -> Result<()> {
+        Ok(())
+    }
+    /// fps hint for stream mode, returns the effective fps after the
+    /// device cap so callers pace at the same rate
+    fn set_stream_fps(&mut self, fps: f32) -> f32 {
+        fps.round().clamp(1.0, 30.0)
+    }
+    /// Send one H.264 access unit. Lock only for the call, never across a
+    /// whole stream.
+    fn send_h264_frame(&mut self, _frame: &[u8]) -> Result<()> {
+        anyhow::bail!("h264 streaming not supported by this device")
+    }
+    fn stream_h264_reader(
+        &mut self,
+        _reader: &mut dyn std::io::Read,
+        _stop: &std::sync::atomic::AtomicBool,
+        _fps: f32,
+    ) -> Result<()> {
+        anyhow::bail!("h264 streaming not supported by this device")
+    }
+}
+
+/// An AIO device with pump, fans, and optionally LCD.
+pub trait AioDevice: FanDevice {
+    fn read_pump_rpm(&self) -> Result<u16>;
+    fn read_coolant_temp(&self) -> Result<f32>;
+}
+
+impl<T: AioDevice> AioDevice for std::sync::Arc<T> {
+    fn read_pump_rpm(&self) -> Result<u16> {
+        AioDevice::read_pump_rpm(&(**self))
+    }
+    fn read_coolant_temp(&self) -> Result<f32> {
+        (**self).read_coolant_temp()
+    }
+}
+
+/// A device that can control RGB/LED effects.
+///
+/// Two control modes:
+/// - **Effect mode**: Set a hardware-native effect (mode + colors + speed + brightness).
+///   Used by wired devices (TL Fan, ENE 6K77, Galahad2) and the native GUI.
+/// - **Direct mode**: Set per-LED colors directly. Used by OpenRGB `UpdateLEDs`.
+///   For wired devices, maps to Static mode. For wireless, streams RGB frames via RF.
+pub trait RgbDevice: Send + Sync {
+    fn fan_led_count_control(&self) -> Option<lianli_shared::rgb::RgbLedCountControl> {
+        None
+    }
+
+    fn configure_fan_led_count(&self, _count: Option<u16>) -> Result<bool> {
+        anyhow::bail!("Adjustable fan LED count is unsupported")
+    }
+    fn deferred_reason(&self) -> Option<UiError> {
+        None
+    }
+
+    fn set_software_animation_with_stop(
+        &self,
+        frames: &[Vec<[u8; 3]>],
+        timing: RgbPlaybackTiming,
+        stop: &Arc<AtomicBool>,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            !stop.load(std::sync::atomic::Ordering::Acquire),
+            "RGB worker stopped"
+        );
+        self.set_software_animation(frames, timing)
+    }
+    /// Human-readable device name (e.g., "UNI FAN TL Controller").
+    fn device_name(&self) -> String;
+
+    /// Supported LED effect modes for this device.
+    fn supported_modes(&self) -> Vec<RgbMode>;
+
+    fn group_effect_modes(&self) -> Vec<RgbMode> {
+        Vec::new()
+    }
+
+    fn hardware_regions(&self) -> Vec<lianli_shared::rgb::RgbRegionParameters> {
+        Vec::new()
+    }
+
+    fn resolve_group_config(
+        &self,
+        _config: &lianli_shared::rgb::RgbDeviceConfig,
+    ) -> Result<Option<Vec<RgbEffect>>> {
+        Ok(None)
+    }
+
+    fn set_group_effects(&self, _effects: &[RgbEffect]) -> Result<()> {
+        anyhow::bail!("Hardware group effects are unsupported")
+    }
+
+    fn zone_effect_modes(&self) -> Vec<RgbMode> {
+        self.supported_modes()
+    }
+
+    /// Information about each independently controllable LED zone.
+    fn zone_info(&self) -> Vec<RgbZoneInfo>;
+
+    /// Total LED count across all zones.
+    fn total_led_count(&self) -> u16 {
+        self.zone_info().iter().map(|z| z.led_count).sum()
+    }
+
+    /// Set a zone's effect mode + parameters.
+    fn set_zone_effect(&self, zone: u8, effect: &RgbEffect) -> Result<()>;
+
+    /// Set all zones to the same effect.
+    fn set_all_effects(&self, effect: &RgbEffect) -> Result<()> {
+        for zone in 0..self.zone_info().len() as u8 {
+            self.set_zone_effect(zone, effect)?;
+        }
+        Ok(())
+    }
+
+    /// Set per-LED colors directly for a zone (used by OpenRGB `UpdateLEDs`).
+    ///
+    /// `colors` is a slice of RGB triplets, one per LED in the zone.
+    /// Default implementation maps to Static mode with the first color.
+    fn set_direct_colors(&self, zone: u8, colors: &[[u8; 3]]) -> Result<()> {
+        let color = colors.first().copied().unwrap_or([255, 255, 255]);
+        let effect = RgbEffect {
+            mode: RgbMode::Static,
+            colors: vec![color],
+            ..RgbEffect::default()
+        };
+        self.set_zone_effect(zone, &effect)
+    }
+
+    /// Whether this device supports true per-LED direct color control.
+    /// When false, `set_direct_colors` maps to Static mode with the first color.
+    fn supports_direct(&self) -> bool {
+        false
+    }
+
+    fn software_render_profile(&self) -> Option<RgbRenderProfile> {
+        None
+    }
+
+    fn software_frame_delivery(&self) -> Option<RgbFrameDelivery> {
+        None
+    }
+
+    fn set_sync_animation_with_stop(
+        &self,
+        frames: &[Vec<[u8; 3]>],
+        timing: RgbPlaybackTiming,
+        stop: &Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            !stop.load(std::sync::atomic::Ordering::Acquire),
+            "RGB request cancelled"
+        );
+        self.set_sync_animation(frames, timing)
+    }
+
+    fn set_sync_animation(&self, frames: &[Vec<[u8; 3]>], timing: RgbPlaybackTiming) -> Result<()> {
+        self.set_software_animation(frames, timing)
+    }
+
+    fn validate_sync_animation(
+        &self,
+        frames: &[Vec<[u8; 3]>],
+        timing: RgbPlaybackTiming,
+    ) -> Result<()> {
+        self.validate_software_animation(frames, timing)
+    }
+
+    fn set_rgb_clock(&self, _ticks: u32) -> Result<()> {
+        Ok(())
+    }
+
+    fn set_software_animation(
+        &self,
+        frames: &[Vec<[u8; 3]>],
+        timing: RgbPlaybackTiming,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            self.software_frame_delivery() == Some(RgbFrameDelivery::Streaming),
+            "software animation upload not supported by this device"
+        );
+        anyhow::ensure!(
+            timing.secondary_interval_ticks == 0
+                && timing.secondary_frame_count == 0
+                && !timing.outer_longest,
+            "secondary RGB timing not supported by this device"
+        );
+        anyhow::ensure!(
+            (100..=6_553_599).contains(&timing.interval_hundredths),
+            "software RGB interval out of range"
+        );
+        let interval_ms = timing.interval_hundredths.div_ceil(160);
+        anyhow::ensure!(
+            (1..=u32::from(u16::MAX)).contains(&interval_ms),
+            "software RGB interval out of range"
+        );
+        self.set_software_frames(frames, interval_ms as u16)
+    }
+
+    fn validate_software_animation(
+        &self,
+        frames: &[Vec<[u8; 3]>],
+        timing: RgbPlaybackTiming,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            self.software_frame_delivery().is_some(),
+            "software RGB is not supported"
+        );
+        anyhow::ensure!(
+            !frames.is_empty() && frames.len() <= usize::from(u16::MAX),
+            "invalid RGB frame count"
+        );
+        let leds = usize::from(self.total_led_count());
+        anyhow::ensure!(
+            leds > 0 && frames.iter().all(|frame| frame.len() == leds),
+            "RGB frame does not match device layout"
+        );
+        anyhow::ensure!(
+            (100..=6_553_599).contains(&timing.interval_hundredths),
+            "invalid RGB playback interval"
+        );
+        if self.software_frame_delivery() == Some(RgbFrameDelivery::Streaming) {
+            anyhow::ensure!(
+                timing.secondary_interval_ticks == 0
+                    && timing.secondary_frame_count == 0
+                    && !timing.outer_longest,
+                "streaming RGB does not support secondary timing"
+            );
+        }
+        Ok(())
+    }
+
+    fn set_software_frames(&self, _frames: &[Vec<[u8; 3]>], _interval_ms: u16) -> Result<()> {
+        anyhow::bail!("software frame delivery not supported by this device")
+    }
+
+    /// Supported scopes per zone. Return empty vec for zones with only "All".
+    fn supported_scopes(&self) -> Vec<Vec<RgbScope>> {
+        vec![]
+    }
+
+    /// Whether this device supports fan direction (swap left/right, swap top/bottom).
+    fn supports_direction(&self) -> bool {
+        false
+    }
+
+    /// Set fan direction (orientation) for a specific zone.
+    fn set_fan_direction(&self, _zone: u8, _swap_lr: bool, _swap_tb: bool) -> Result<()> {
+        anyhow::bail!("Fan direction not supported by this device")
+    }
+
+    /// Whether this device supports motherboard ARGB sync (passthrough from MB header).
+    fn supports_mb_rgb_sync(&self) -> bool {
+        false
+    }
+
+    /// True when the LEDs this device exposes are driven over RF by a bound
+    /// wireless device, so writes here are skipped. The GUI and the OpenRGB
+    /// server hide such devices, as the fan list already hides bound wired
+    /// fan entries.
+    fn rf_owned(&self) -> bool {
+        false
+    }
+
+    /// Enable or disable motherboard ARGB sync.
+    /// When enabled, the device reads ARGB from the motherboard header instead of using
+    /// software-controlled effects.
+    fn set_mb_rgb_sync(&self, _enabled: bool) -> Result<()> {
+        anyhow::bail!("MB RGB sync not supported by this device")
+    }
+
+    /// Whether this device supports merge-lighting (cross-group synchronized animation).
+    fn supports_merge_lighting(&self) -> bool {
+        false
+    }
+
+    /// Enter merge-lighting mode. After this call, effects applied to zone 0
+    /// propagate across all groups as a single synchronized animation.
+    fn start_merge_lighting(&self) -> Result<()> {
+        anyhow::bail!("Merge lighting not supported by this device")
+    }
+
+    /// Exit merge-lighting mode. Restores per-group independent control.
+    fn stop_merge_lighting(&self) -> Result<()> {
+        anyhow::bail!("Merge lighting not supported by this device")
+    }
+
+    fn ping(&self, _zone: u8) -> Result<()> {
+        anyhow::bail!("Ping not supported by this device")
+    }
+}
+
+/// Blanket forwarding impl so any `Arc<T>` can be used as an `RgbDevice`
+/// without per-driver boilerplate.
+impl<T: RgbDevice + ?Sized> RgbDevice for Arc<T> {
+    fn fan_led_count_control(&self) -> Option<lianli_shared::rgb::RgbLedCountControl> {
+        (**self).fan_led_count_control()
+    }
+
+    fn configure_fan_led_count(&self, count: Option<u16>) -> Result<bool> {
+        (**self).configure_fan_led_count(count)
+    }
+    fn deferred_reason(&self) -> Option<UiError> {
+        (**self).deferred_reason()
+    }
+    fn set_software_animation_with_stop(
+        &self,
+        frames: &[Vec<[u8; 3]>],
+        timing: RgbPlaybackTiming,
+        stop: &Arc<AtomicBool>,
+    ) -> Result<()> {
+        (**self).set_software_animation_with_stop(frames, timing, stop)
+    }
+    fn hardware_regions(&self) -> Vec<lianli_shared::rgb::RgbRegionParameters> {
+        (**self).hardware_regions()
+    }
+    fn resolve_group_config(
+        &self,
+        config: &lianli_shared::rgb::RgbDeviceConfig,
+    ) -> Result<Option<Vec<RgbEffect>>> {
+        (**self).resolve_group_config(config)
+    }
+    fn set_group_effects(&self, effects: &[RgbEffect]) -> Result<()> {
+        (**self).set_group_effects(effects)
+    }
+    fn device_name(&self) -> String {
+        (**self).device_name()
+    }
+    fn supported_modes(&self) -> Vec<RgbMode> {
+        (**self).supported_modes()
+    }
+    fn group_effect_modes(&self) -> Vec<RgbMode> {
+        (**self).group_effect_modes()
+    }
+    fn zone_effect_modes(&self) -> Vec<RgbMode> {
+        (**self).zone_effect_modes()
+    }
+    fn zone_info(&self) -> Vec<RgbZoneInfo> {
+        (**self).zone_info()
+    }
+    fn total_led_count(&self) -> u16 {
+        (**self).total_led_count()
+    }
+    fn set_zone_effect(&self, zone: u8, effect: &RgbEffect) -> Result<()> {
+        (**self).set_zone_effect(zone, effect)
+    }
+    fn set_all_effects(&self, effect: &RgbEffect) -> Result<()> {
+        (**self).set_all_effects(effect)
+    }
+    fn set_direct_colors(&self, zone: u8, colors: &[[u8; 3]]) -> Result<()> {
+        (**self).set_direct_colors(zone, colors)
+    }
+    fn rf_owned(&self) -> bool {
+        (**self).rf_owned()
+    }
+    fn supports_direct(&self) -> bool {
+        (**self).supports_direct()
+    }
+    fn software_render_profile(&self) -> Option<RgbRenderProfile> {
+        (**self).software_render_profile()
+    }
+    fn software_frame_delivery(&self) -> Option<RgbFrameDelivery> {
+        (**self).software_frame_delivery()
+    }
+    fn set_sync_animation(&self, frames: &[Vec<[u8; 3]>], timing: RgbPlaybackTiming) -> Result<()> {
+        (**self).set_sync_animation(frames, timing)
+    }
+    fn set_sync_animation_with_stop(
+        &self,
+        frames: &[Vec<[u8; 3]>],
+        timing: RgbPlaybackTiming,
+        stop: &Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<()> {
+        (**self).set_sync_animation_with_stop(frames, timing, stop)
+    }
+    fn validate_sync_animation(
+        &self,
+        frames: &[Vec<[u8; 3]>],
+        timing: RgbPlaybackTiming,
+    ) -> Result<()> {
+        (**self).validate_sync_animation(frames, timing)
+    }
+    fn set_rgb_clock(&self, ticks: u32) -> Result<()> {
+        (**self).set_rgb_clock(ticks)
+    }
+    fn set_software_animation(
+        &self,
+        frames: &[Vec<[u8; 3]>],
+        timing: RgbPlaybackTiming,
+    ) -> Result<()> {
+        (**self).set_software_animation(frames, timing)
+    }
+    fn set_software_frames(&self, frames: &[Vec<[u8; 3]>], interval_ms: u16) -> Result<()> {
+        (**self).set_software_frames(frames, interval_ms)
+    }
+    fn validate_software_animation(
+        &self,
+        frames: &[Vec<[u8; 3]>],
+        timing: RgbPlaybackTiming,
+    ) -> Result<()> {
+        (**self).validate_software_animation(frames, timing)
+    }
+    fn supported_scopes(&self) -> Vec<Vec<RgbScope>> {
+        (**self).supported_scopes()
+    }
+    fn supports_direction(&self) -> bool {
+        (**self).supports_direction()
+    }
+    fn set_fan_direction(&self, zone: u8, swap_lr: bool, swap_tb: bool) -> Result<()> {
+        (**self).set_fan_direction(zone, swap_lr, swap_tb)
+    }
+    fn supports_mb_rgb_sync(&self) -> bool {
+        (**self).supports_mb_rgb_sync()
+    }
+    fn set_mb_rgb_sync(&self, enabled: bool) -> Result<()> {
+        (**self).set_mb_rgb_sync(enabled)
+    }
+    fn supports_merge_lighting(&self) -> bool {
+        (**self).supports_merge_lighting()
+    }
+    fn start_merge_lighting(&self) -> Result<()> {
+        (**self).start_merge_lighting()
+    }
+    fn stop_merge_lighting(&self) -> Result<()> {
+        (**self).stop_merge_lighting()
+    }
+    fn ping(&self, zone: u8) -> Result<()> {
+        (**self).ping(zone)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RgbFrameDelivery {
+    Streaming,
+    LoopUpload,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("{reason}")]
+pub struct RgbDeferred {
+    pub retry_after: std::time::Duration,
+    pub reason: &'static str,
+}
+
+#[cfg(test)]
+mod rgb_profile_tests {
+    use super::*;
+    use lianli_shared::rgb::RgbRenderFamily;
+
+    struct NativeRgb;
+
+    impl RgbDevice for NativeRgb {
+        fn device_name(&self) -> String {
+            "test".to_string()
+        }
+
+        fn supported_modes(&self) -> Vec<RgbMode> {
+            Vec::new()
+        }
+
+        fn zone_info(&self) -> Vec<RgbZoneInfo> {
+            Vec::new()
+        }
+
+        fn set_zone_effect(&self, _zone: u8, _effect: &RgbEffect) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    struct SoftwareRgb;
+
+    impl RgbDevice for SoftwareRgb {
+        fn device_name(&self) -> String {
+            "software".to_string()
+        }
+
+        fn supported_modes(&self) -> Vec<RgbMode> {
+            Vec::new()
+        }
+
+        fn zone_info(&self) -> Vec<RgbZoneInfo> {
+            Vec::new()
+        }
+
+        fn set_zone_effect(&self, _zone: u8, _effect: &RgbEffect) -> Result<()> {
+            Ok(())
+        }
+
+        fn software_render_profile(&self) -> Option<RgbRenderProfile> {
+            Some(RgbRenderProfile {
+                family: RgbRenderFamily::Tl,
+                fan_count: 4,
+                led_count: 104,
+                right_attach: false,
+            })
+        }
+    }
+
+    #[test]
+    fn arc_forwards_software_profiles_and_native_devices_can_opt_out() {
+        let native = Arc::new(NativeRgb);
+        assert_eq!(native.software_render_profile(), None);
+
+        let expected = RgbRenderProfile {
+            family: RgbRenderFamily::Tl,
+            fan_count: 4,
+            led_count: 104,
+            right_attach: false,
+        };
+        let software = Arc::new(SoftwareRgb);
+        assert_eq!(software.software_render_profile(), Some(expected));
+    }
+}

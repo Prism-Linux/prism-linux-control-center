@@ -1,0 +1,122 @@
+name: AUR
+
+on:
+  workflow_run:
+    workflows: ["Release Notes"]
+    types: [completed]
+  push:
+    branches: [main]
+    paths:
+      - packaging/archlinux/git/PKGBUILD
+      - packaging/archlinux/LICENSE
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'AUR package to publish'
+        type: choice
+        options: [lianli-linux, lianli-linux-git]
+      tag:
+        description: 'Release tag for lianli-linux, e.g. v1.2.0'
+        required: false
+      pkgrel:
+        description: 'pkgrel for lianli-linux; raise it to republish a PKGBUILD-only fix'
+        required: false
+        default: '1'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    concurrency:
+      group: aur-release
+      cancel-in-progress: false
+    # Only a successful release run for a pushed tag publishes; a manual run is for re-publishing.
+    if: >-
+      github.repository == 'sgtaziz/lian-li-linux' &&
+      ((github.event_name == 'workflow_dispatch' && inputs.package == 'lianli-linux') ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.event.workflow_run.head_branch }}
+      PKGREL: ${{ github.event_name == 'workflow_dispatch' && inputs.pkgrel || '1' }}
+    steps:
+      - name: Check tag
+        id: tag
+        run: |
+          set -euo pipefail
+          [[ "$PKGREL" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid pkgrel '$PKGREL'"; exit 1; }
+          # pkgver cannot hold pre-release suffixes, so only plain versions reach the AUR.
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping '$TAG': not a plain release version"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install tools
+        if: steps.tag.outputs.publish == 'true'
+        run: pacman -Syu --noconfirm --needed git openssh pacman-contrib rust npm
+
+      # Packaging files come from the default branch so fixes also apply to older tags;
+      # only the submodule commits are read from the tag.
+      - uses: actions/checkout@v5
+        if: steps.tag.outputs.publish == 'true'
+
+      - name: Stage PKGBUILD
+        if: steps.tag.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch --depth=1 origin "refs/tags/$TAG:refs/tags/$TAG"
+          tinyuz=$(git ls-tree "$TAG" vendor/tinyuz | awk '{print $3}')
+          hdiffpatch=$(git ls-tree "$TAG" vendor/HDiffPatch | awk '{print $3}')
+          test -n "$tinyuz" && test -n "$hdiffpatch"
+          useradd -m builder
+          install -d -o builder /home/builder/pkg
+          sed -e "s/^pkgver=.*/pkgver=${TAG#v}/" \
+              -e "s/^pkgrel=.*/pkgrel=$PKGREL/" \
+              -e "s/^_tinyuz=.*/_tinyuz=$tinyuz/" \
+              -e "s/^_hdiffpatch=.*/_hdiffpatch=$hdiffpatch/" \
+              packaging/archlinux/release/PKGBUILD > /home/builder/pkg/PKGBUILD
+          chown builder /home/builder/pkg/PKGBUILD
+          cd /home/builder/pkg
+          sudo -u builder updpkgsums
+
+      - name: Publish lianli-linux
+        if: steps.tag.outputs.publish == 'true'
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: bash .github/scripts/aur-publish.sh lianli-linux "Update to ${TAG#v}-$PKGREL"
+
+  git:
+    # VCS packages are only republished when their build files change, never for a bare pkgver bump.
+    if: >-
+      github.repository == 'sgtaziz/lian-li-linux' &&
+      (github.event_name == 'push' ||
+       (github.event_name == 'workflow_dispatch' && inputs.package == 'lianli-linux-git'))
+    concurrency:
+      group: aur-git
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install tools
+        run: pacman -Syu --noconfirm --needed git openssh rust npm
+
+      - uses: actions/checkout@v5
+
+      - name: Stage PKGBUILD
+        run: |
+          set -euo pipefail
+          useradd -m builder
+          install -d -o builder /home/builder/pkg
+          install -m 644 -o builder packaging/archlinux/git/PKGBUILD /home/builder/pkg/PKGBUILD
+
+      - name: Publish lianli-linux-git
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: bash .github/scripts/aur-publish.sh lianli-linux-git "Update PKGBUILD to ${GITHUB_SHA::7}"

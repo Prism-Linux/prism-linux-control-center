@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Prism Linux Control Center
+Comment=Linux RGB, fan and LCD hardware control
+Exec=lianli-gui
+Icon=com.sgtaziz.lianlilinux
+Terminal=false
+Type=Application
+Categories=Utility;HardwareSettings;
+StartupWMClass=com.sgtaziz.lianlilinux

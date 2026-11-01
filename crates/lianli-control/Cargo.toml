@@ -1,0 +1,19 @@
+[package]
+name = "lianli-control"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Service and installation diagnostics without hardware or GUI libraries"
+
+[dependencies]
+lianli-shared = { path = "../lianli-shared" }
+lianli-evdi = { path = "../lianli-evdi" }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+clap = { workspace = true }
+libc = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
+tempfile = { workspace = true }
+socket2 = { version = "0.6", features = ["all"] }

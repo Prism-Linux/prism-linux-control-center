@@ -1,0 +1,465 @@
+use super::enumerate::find_usb_device;
+use super::DetectedDevice;
+use anyhow::Result;
+use lianli_shared::config::HidBackend;
+use lianli_shared::device_id::DeviceFamily;
+use lianli_transport::UsbContext;
+use lianli_transport::{
+    HidTransport, HidrawReopener, HidrawTransport, RusbBulk, RusbHid, RusbHidReopener,
+};
+use parking_lot::Mutex;
+use rusb::Device;
+use std::sync::Arc;
+use std::time::Duration;
+use tracing::warn;
+
+type SharedHid = Arc<Mutex<Box<dyn HidTransport>>>;
+
+fn make_hidraw_reopener(
+    vid: u16,
+    pid: u16,
+    bus: u8,
+    port_numbers: Vec<u8>,
+    usage_page: Option<u16>,
+) -> HidrawReopener {
+    Arc::new(move || {
+        let (dev, path) = open_hidraw_device_strict(vid, pid, bus, &port_numbers, usage_page)?;
+        let mut transport = HidrawTransport::new(dev, path);
+        transport.set_reopener(make_hidraw_reopener(
+            vid,
+            pid,
+            bus,
+            port_numbers.clone(),
+            usage_page,
+        ));
+        Ok(transport)
+    })
+}
+
+/// Fail instead of opening a sibling when the requested topology is unavailable.
+fn open_hidraw_device_strict(
+    vid: u16,
+    pid: u16,
+    bus: u8,
+    port_numbers: &[u8],
+    usage_page: Option<u16>,
+) -> Result<(hidapi::HidDevice, Option<std::ffi::OsString>)> {
+    let api = hidapi::HidApi::new().map_err(|e| anyhow::anyhow!("HidApi init: {e}"))?;
+    anyhow::ensure!(
+        !port_numbers.is_empty(),
+        "USB port topology unavailable for {vid:04x}:{pid:04x}"
+    );
+    let info = api
+        .device_list()
+        .find(|info| {
+            info.vendor_id() == vid
+                && info.product_id() == pid
+                && usage_page.is_none_or(|up| info.usage_page() == up)
+                && hidraw_matches_topology(info.path(), bus, port_numbers)
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "hidraw device {vid:04x}:{pid:04x} at saved topology {bus}-{:?} not found",
+                port_numbers
+            )
+        })?;
+    let path: std::ffi::OsString = {
+        use std::os::unix::ffi::OsStrExt;
+        std::ffi::OsStr::from_bytes(info.path().to_bytes()).to_os_string()
+    };
+    info.open_device(&api)
+        .map(|d| (d, Some(path)))
+        .map_err(|e| anyhow::anyhow!("hidraw open at requested topology {vid:04x}:{pid:04x}: {e}"))
+}
+
+fn hidraw_matches_topology(path: &std::ffi::CStr, bus: u8, ports: &[u8]) -> bool {
+    use std::os::unix::ffi::OsStrExt;
+    let path = std::path::Path::new(std::ffi::OsStr::from_bytes(path.to_bytes()));
+    let Some(name) = path.file_name() else {
+        return false;
+    };
+    let Ok(resolved) = std::fs::canonicalize(std::path::Path::new("/sys/class/hidraw").join(name))
+    else {
+        return false;
+    };
+    topology_matches_sysfs(
+        &resolved.to_string_lossy(),
+        &usb_topology_string(bus, ports),
+    )
+}
+
+fn topology_matches_sysfs(path: &str, topology: &str) -> bool {
+    path.split('/')
+        .rev()
+        .filter_map(|part| part.split_once(':'))
+        .find(|(device, _)| device.contains('-'))
+        .is_some_and(|(device, _)| device == topology)
+}
+
+fn make_rusb_reopener(
+    vid: u16,
+    pid: u16,
+    bus: u8,
+    port_numbers: Vec<u8>,
+    usage_page: Option<u16>,
+) -> RusbHidReopener {
+    Arc::new(move || {
+        let usb_dev = lianli_transport::usb_context::devices()
+            .map_err(|e| anyhow::anyhow!("rusb devices: {e}"))?
+            .iter()
+            .find(|d| {
+                d.bus_number() == bus
+                    && d.port_numbers().ok().as_deref() == Some(&port_numbers[..])
+                    && d.device_descriptor()
+                        .map(|desc| desc.vendor_id() == vid && desc.product_id() == pid)
+                        .unwrap_or(false)
+            })
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "USB device {vid:04x}:{pid:04x} at {bus}-{:?} not enumerable on reopen",
+                    port_numbers
+                )
+            })?;
+        let transport = RusbHid::open_by_usage_with_reopener(
+            usb_dev,
+            usage_page,
+            make_rusb_reopener(vid, pid, bus, port_numbers.clone(), usage_page),
+        )
+        .map_err(|e| anyhow::anyhow!("rusb hid open: {e}"))?;
+        Ok(transport)
+    })
+}
+
+fn try_open_with_retry<T>(
+    usb_device: Option<&Device<UsbContext>>,
+    label: &str,
+    mut open_fn: impl FnMut() -> Result<T>,
+) -> Result<T> {
+    const MAX_RETRIES: u32 = 3;
+    const RESET_AT: u32 = 2;
+    for attempt in 0..=MAX_RETRIES {
+        match open_fn() {
+            Ok(t) => return Ok(t),
+            Err(e) if attempt < MAX_RETRIES => {
+                if attempt == RESET_AT {
+                    if let Some(usb_dev) = usb_device {
+                        warn!(
+                            "{label}: open attempt {} failed: {e}, resetting USB device",
+                            attempt + 1
+                        );
+                        let _ = RusbHid::reset_usb_device(usb_dev);
+                        std::thread::sleep(Duration::from_secs(3));
+                    } else {
+                        return Err(e.context(format!(
+                            "{label}: failed and no USB device available for reset"
+                        )));
+                    }
+                } else {
+                    warn!(
+                        "{label}: open attempt {} failed: {e}, retrying",
+                        attempt + 1
+                    );
+                    std::thread::sleep(Duration::from_millis(250));
+                }
+            }
+            Err(e) => {
+                return Err(e.context(format!(
+                    "{label}: failed after {} attempts",
+                    MAX_RETRIES + 1
+                )));
+            }
+        }
+    }
+    unreachable!()
+}
+
+fn open_rusb_with_retry<T>(
+    usb_device: &Device<UsbContext>,
+    open_fn: impl FnMut() -> Result<T>,
+) -> Result<T> {
+    try_open_with_retry(Some(usb_device), "rusb open", open_fn)
+}
+
+fn usb_topology_string(bus: u8, port_numbers: &[u8]) -> String {
+    format!(
+        "{}-{}",
+        bus,
+        port_numbers
+            .iter()
+            .map(|p| p.to_string())
+            .collect::<Vec<_>>()
+            .join(".")
+    )
+}
+
+pub fn hidraw_path_for_usb_topology(bus: u8, port_numbers: &[u8]) -> Option<std::ffi::CString> {
+    if port_numbers.is_empty() {
+        return None;
+    }
+    let topology = usb_topology_string(bus, port_numbers);
+    let needles = [format!("/{topology}/"), format!("/{topology}:")];
+    let class_dir = std::path::Path::new("/sys/class/hidraw");
+    for entry in std::fs::read_dir(class_dir).ok()?.flatten() {
+        let Ok(resolved) = std::fs::canonicalize(entry.path()) else {
+            continue;
+        };
+        let resolved_str = resolved.to_string_lossy();
+        if needles.iter().any(|n| resolved_str.contains(n.as_str())) {
+            let name = entry.file_name();
+            let name = name.to_str()?;
+            return std::ffi::CString::new(format!("/dev/{name}")).ok();
+        }
+    }
+    None
+}
+
+fn open_hidraw_device(
+    vid: u16,
+    pid: u16,
+    bus: u8,
+    port_numbers: &[u8],
+    usage_page: Option<u16>,
+) -> Result<(hidapi::HidDevice, Option<std::ffi::OsString>)> {
+    open_hidraw_device_strict(vid, pid, bus, port_numbers, usage_page)
+}
+
+pub fn open_shared_hid(
+    device: &Device<UsbContext>,
+    usage_page: Option<u16>,
+    vid: u16,
+    pid: u16,
+    bus: u8,
+    port_numbers: &[u8],
+    backend: HidBackend,
+) -> Result<SharedHid> {
+    match backend {
+        HidBackend::Hidraw => {
+            let pn = port_numbers.to_vec();
+            let (dev, path) = open_hidraw_device(vid, pid, bus, port_numbers, usage_page)?;
+            let mut transport = HidrawTransport::new(dev, path);
+            transport.set_reopener(make_hidraw_reopener(vid, pid, bus, pn, usage_page));
+            Ok(Arc::new(Mutex::new(Box::new(transport))))
+        }
+        HidBackend::Rusb => {
+            let pn = port_numbers.to_vec();
+            let transport = open_rusb_with_retry(device, || {
+                let t = RusbHid::open_by_usage_with_reopener(
+                    device.clone(),
+                    usage_page,
+                    make_rusb_reopener(vid, pid, bus, pn.clone(), usage_page),
+                )?;
+                Ok(t)
+            })?;
+            Ok(Arc::new(Mutex::new(Box::new(transport))))
+        }
+    }
+}
+
+pub fn open_hid_transient_for_device(
+    device: &Device<UsbContext>,
+    usage_page: Option<u16>,
+    backend: HidBackend,
+) -> Result<Box<dyn HidTransport>> {
+    match backend {
+        HidBackend::Hidraw => {
+            let descriptor = device.device_descriptor()?;
+            let (dev, path) = open_hidraw_device_strict(
+                descriptor.vendor_id(),
+                descriptor.product_id(),
+                device.bus_number(),
+                &device.port_numbers()?,
+                usage_page,
+            )?;
+            Ok(Box::new(HidrawTransport::new(dev, path)))
+        }
+        HidBackend::Rusb => Ok(Box::new(RusbHid::open_by_usage(
+            device.clone(),
+            usage_page,
+        )?)),
+    }
+}
+
+pub fn open_hid_transient(
+    device: &Device<UsbContext>,
+    usage_page: Option<u16>,
+    vid: u16,
+    pid: u16,
+    bus: u8,
+    port_numbers: &[u8],
+    backend: HidBackend,
+) -> Result<Box<dyn HidTransport>> {
+    match backend {
+        HidBackend::Hidraw => {
+            let (dev, path) = open_hidraw_device(vid, pid, bus, port_numbers, usage_page)?;
+            Ok(Box::new(HidrawTransport::new(dev, path)))
+        }
+        HidBackend::Rusb => {
+            let transport = RusbHid::open_by_usage(device.clone(), usage_page)?;
+            Ok(Box::new(transport))
+        }
+    }
+}
+
+pub fn open_hid_lcd_device(
+    det: &DetectedDevice,
+    backend: HidBackend,
+) -> Option<Result<Box<dyn crate::traits::LcdDevice>>> {
+    let pid = det.pid;
+    let port_numbers = det.device.port_numbers().unwrap_or_default();
+
+    let shared = match open_shared_hid(
+        &det.device,
+        det.hid_usage_page,
+        det.vid,
+        pid,
+        det.bus,
+        &port_numbers,
+        backend,
+    ) {
+        Ok(s) => s,
+        Err(e) => return Some(Err(e)),
+    };
+
+    match det.family {
+        DeviceFamily::HydroShiftLcd | DeviceFamily::Galahad2Lcd => {
+            shared.lock().read_flush();
+            Some(
+                crate::hydroshift_lcd::HydroShiftLcdController::new(shared, pid)
+                    .map(|d| Box::new(std::sync::Arc::new(d)) as Box<dyn crate::traits::LcdDevice>),
+            )
+        }
+        DeviceFamily::TlLcd => {
+            let mut tl = crate::tl_lcd::TlLcdDevice::new(shared);
+            Some(
+                crate::traits::LcdDevice::initialize(&mut tl)
+                    .map(|_| Box::new(tl) as Box<dyn crate::traits::LcdDevice>),
+            )
+        }
+        _ => None,
+    }
+}
+
+pub fn open_hid_lcd_by_topology(
+    vid: u16,
+    pid: u16,
+    family: DeviceFamily,
+    bus: u8,
+    port_numbers: &[u8],
+    backend: HidBackend,
+) -> Result<Box<dyn crate::traits::LcdDevice>> {
+    let device = lianli_transport::usb_context::devices()?
+        .iter()
+        .find(|d| {
+            d.bus_number() == bus
+                && d.port_numbers().ok().as_deref() == Some(port_numbers)
+                && d.device_descriptor()
+                    .map(|desc| desc.vendor_id() == vid && desc.product_id() == pid)
+                    .unwrap_or(false)
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "no USB device matching topology {} for {vid:04x}:{pid:04x}",
+                usb_topology_string(bus, port_numbers)
+            )
+        })?;
+    let det = DetectedDevice {
+        device: device.clone(),
+        family,
+        vid,
+        pid,
+        name: "",
+        bus,
+        address: device.address(),
+        serial: None,
+        hid_usage_page: None,
+    };
+    match open_hid_lcd_device(&det, backend) {
+        Some(Ok(ctrl)) => Ok(ctrl),
+        Some(Err(e)) => Err(e.context("HID LCD open by topology")),
+        None => Err(anyhow::anyhow!("family does not support LCD")),
+    }
+}
+
+pub fn open_hid_lcd_by_vid_pid(
+    vid: u16,
+    pid: u16,
+    family: DeviceFamily,
+    backend: HidBackend,
+) -> Result<Box<dyn crate::traits::LcdDevice>> {
+    let usb_device = find_usb_device(vid, pid);
+
+    for attempt in 0..=3u32 {
+        if let Some(device) = usb_device.as_ref() {
+            let det = DetectedDevice {
+                device: device.clone(),
+                family,
+                vid,
+                pid,
+                name: "",
+                bus: device.bus_number(),
+                address: device.address(),
+                serial: None,
+                hid_usage_page: None,
+            };
+            match open_hid_lcd_device(&det, backend) {
+                Some(Ok(ctrl)) => return Ok(ctrl),
+                Some(Err(e)) if attempt < 3 => {
+                    warn!(
+                        "HID LCD open attempt {} failed ({vid:04x}:{pid:04x}): {e}, resetting USB",
+                        attempt + 1
+                    );
+                }
+                Some(Err(e)) => {
+                    return Err(e.context("HID LCD open failed after 4 attempts"));
+                }
+                None => return Err(anyhow::anyhow!("family does not support LCD")),
+            }
+        } else if attempt < 3 {
+            warn!(
+                "No USB device {vid:04x}:{pid:04x} found (attempt {}), retrying",
+                attempt + 1
+            );
+        } else {
+            return Err(anyhow::anyhow!(
+                "no USB device found for {vid:04x}:{pid:04x} after 4 attempts"
+            ));
+        }
+
+        if backend == HidBackend::Rusb {
+            if let Some(ref usb_dev) = usb_device {
+                let _ = RusbHid::reset_usb_device(usb_dev);
+                std::thread::sleep(Duration::from_secs(3));
+            }
+        } else {
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+    unreachable!()
+}
+
+pub fn open_usb_bulk_backend(det: &DetectedDevice) -> Result<RusbBulk> {
+    open_rusb_with_retry(&det.device, || {
+        let mut transport = RusbBulk::open_device(det.device.clone())?;
+        transport.detach_and_configure(det.name)?;
+        Ok(transport)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::topology_matches_sysfs;
+
+    #[test]
+    fn hidraw_topology_selects_the_leaf_usb_device_and_any_of_its_interfaces() {
+        let path =
+            "/sys/devices/usb1/1-2/1-2:1.0/1-2.3/1-2.3:1.1/0003:0CF2:A102.0001/hidraw/hidraw4";
+        assert!(topology_matches_sysfs(path, "1-2.3"));
+        assert!(!topology_matches_sysfs(path, "1-2"));
+        assert!(!topology_matches_sysfs(path, "1-2.30"));
+        assert!(!topology_matches_sysfs(path, "2-2.3"));
+        assert!(!topology_matches_sysfs(
+            "/sys/devices/virtual/hidraw4",
+            "1-2.3"
+        ));
+    }
+}

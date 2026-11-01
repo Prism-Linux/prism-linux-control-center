@@ -1,0 +1,456 @@
+:root {
+  /* Color palette (dark theme) */
+  --bg-base: #07101d;
+  --bg-surface: rgba(13, 25, 43, .88);
+  --bg-elevated: rgba(21, 38, 62, .92);
+  --bg-hover: rgba(40, 68, 105, .72);
+  --border: rgba(126, 164, 216, .19);
+  --border-strong: rgba(132, 176, 234, .34);
+  --text-primary: #edf4ff;
+  --text-secondary: #a6b7d0;
+  --text-muted: #7588a4;
+  --accent: #75adff;
+  --accent-hover: #a7ceff;
+  --accent-soft: rgba(67, 137, 255, .18);
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --purple: #a78bfa;
+  --teal: #2dd4bf;
+  --pink: #f472b6;
+  --neon-blue: #398cff;
+  --neon-blue-light: #18caff;
+  --neon-cyan: #19d9f3;
+  --neon-cyan-light: #56eaff;
+  --neon-pink: #ee55c7;
+  --neon-pink-light: #ff6ab5;
+  --neon-violet: #a254ff;
+  --neon-violet-light: #e06dff;
+  --neon-amber: #ff9c44;
+  --neon-amber-light: #ffcf52;
+  --radius-glass: 16px;
+  --glass-fallback: rgba(11, 21, 36, .76);
+  --glass-surface: linear-gradient(145deg, rgba(37, 57, 87, .56), rgba(12, 24, 42, .66) 48%, rgba(9, 19, 34, .74));
+  --glass-edge: rgba(137, 184, 248, .34);
+  --glass-highlight: rgba(255, 255, 255, .11);
+  --glass-shadow: 0 18px 42px rgba(0, 0, 0, .34), 0 0 22px rgba(40, 126, 229, .11), inset 0 1px 0 rgba(255,255,255,.10);
+
+  /* Typography */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 14px;
+  --font-size-lg: 16px;
+  --font-size-xl: 18px;
+  --font-size-2xl: 22px;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+}
+
+/* Light-mode palette. Activated by `data-theme="light"` on <html>. */
+[data-theme="light"] {
+  --bg-base: #f4f6f9;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-hover: #eef1f6;
+  --border: #e2e6ee;
+  --border-strong: #cdd3de;
+  --text-primary: #1a1d27;
+  --text-secondary: #565d6b;
+  --text-muted: #868f9e;
+  --accent: #2f7acc;
+  --accent-hover: #2569b0;
+  --accent-soft: rgba(47, 122, 204, 0.12);
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --purple: #7c3aed;
+  --teal: #0d9488;
+  --pink: #db2777;
+  --neon-blue: #2477e3;
+  --neon-blue-light: #04a6d5;
+  --neon-cyan: #0397ad;
+  --neon-cyan-light: #12b7cf;
+  --neon-pink: #c62ba1;
+  --neon-pink-light: #e63d83;
+  --neon-violet: #7d42d7;
+  --neon-violet-light: #a344d1;
+  --neon-amber: #d36a14;
+  --neon-amber-light: #e8a817;
+  --glass-fallback: rgba(255,255,255,.94);
+  --glass-surface: linear-gradient(145deg, rgba(255,255,255,.88), rgba(236,243,253,.78));
+  --glass-edge: rgba(94, 137, 199, .30);
+  --glass-highlight: rgba(255,255,255,.82);
+  --glass-shadow: 0 10px 30px rgba(32,70,120,.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  position: relative;
+  background: #050b15;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  user-select: none;
+}
+body::before {
+  position: fixed;
+  z-index: 0;
+  inset: -8%;
+  content: "";
+  pointer-events: none;
+  background:
+    radial-gradient(34rem 22rem at 12% -5%, rgba(101, 47, 220, .42), transparent 70%),
+    radial-gradient(31rem 20rem at 91% 1%, rgba(0, 144, 255, .42), transparent 68%),
+    radial-gradient(24rem 23rem at 87% 79%, rgba(226, 84, 48, .24), transparent 72%),
+    radial-gradient(25rem 27rem at 3% 94%, rgba(36, 115, 255, .32), transparent 72%),
+    linear-gradient(135deg, #050b15, #091526 55%, #050b15);
+  filter: saturate(112%);
+}
+[data-theme="light"] body { background:#dfe8f4; }
+[data-theme="light"] body::before {
+  background:
+    radial-gradient(30rem 22rem at 5% 0%, rgba(163,105,255,.16), transparent 70%),
+    radial-gradient(28rem 20rem at 96% 3%, rgba(40,144,255,.13), transparent 70%),
+    linear-gradient(135deg,#e9eff8,#dce8f4 54%,#eef3fa);
+}
+
+#app {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+input,
+textarea {
+  font-family: var(--font-sans);
+  user-select: text;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--accent-hover);
+}
+
+/* Naive UI dark-theme overrides to match the palette. */
+.n-config-provider {
+  height: 100%;
+}
+
+.card {
+  position: relative;
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--glass-shadow);
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
+  backdrop-filter: blur(24px) saturate(145%);
+}
+
+.devices-page { --page-accent: var(--neon-pink); --page-glow: rgba(238, 85, 199, .14); --page-edge: rgba(238, 106, 210, .38); }
+.lcd-page { --page-accent: var(--neon-cyan); --page-glow: rgba(25, 217, 243, .14); --page-edge: rgba(57, 205, 239, .38); }
+.fans-page { --page-accent: var(--neon-pink); --page-glow: rgba(238, 85, 199, .14); --page-edge: rgba(238, 106, 210, .38); }
+.rgb-page { --page-accent: var(--neon-violet); --page-glow: rgba(162, 84, 255, .16); --page-edge: rgba(175, 111, 255, .40); }
+.aio-page { --page-accent: var(--neon-cyan); --page-glow: rgba(25, 217, 243, .14); --page-edge: rgba(57, 205, 239, .38); }
+.settings-page { --page-accent: var(--neon-violet); --page-glow: rgba(162, 84, 255, .14); --page-edge: rgba(175, 111, 255, .38); }
+.health-page { --page-accent: var(--neon-blue); --page-glow: rgba(57, 140, 255, .14); --page-edge: rgba(84, 157, 255, .38); }
+
+.editor-window,
+.browser-window {
+  background:
+    radial-gradient(60rem 36rem at 0% 0%, rgba(101, 47, 220, .14), transparent 72%),
+    radial-gradient(55rem 34rem at 100% 0%, rgba(0, 144, 255, .13), transparent 70%),
+    linear-gradient(135deg, #07101d, #091526 55%, #050b15) !important;
+}
+.editor-window .toolbar,
+.browser-window .topbar {
+  background: linear-gradient(100deg, rgba(24, 39, 62, .78), rgba(9, 20, 36, .82)) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.10), 0 8px 24px rgba(0,0,0,.16);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+}
+.editor-window .pane,
+.browser-window .tpl-card {
+  background: linear-gradient(145deg, rgba(29, 47, 73, .62), rgba(9, 20, 36, .72)) !important;
+  border-color: rgba(132, 177, 236, .30) !important;
+  box-shadow: 0 14px 32px rgba(0,0,0,.24), 0 0 18px rgba(57,140,255,.09), inset 0 1px 0 rgba(255,255,255,.09);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  backdrop-filter: blur(22px) saturate(140%);
+}
+
+/* Keep the shared glass treatment above page-local legacy card rules. */
+.page .card,
+.page .n-card,
+.health-page .card,
+.health-page .n-card,
+.page .settings-card,
+.page .fan-group,
+.page .rgb-device,
+.page .lcd-config,
+.page .aio,
+.health-page > details,
+.health-page .check-list,
+.health-page .check-row {
+  background-color: transparent !important;
+  background-image:
+    radial-gradient(120% 90% at 0% 0%, var(--page-glow, rgba(87, 131, 201, .16)), transparent 65%),
+    linear-gradient(145deg, rgba(30, 48, 74, .64), rgba(10, 21, 37, .72) 58%, rgba(8, 18, 32, .78)) !important;
+  border-color: var(--page-edge, rgba(132, 177, 236, .32)) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .30), 0 0 24px var(--page-glow, rgba(38, 126, 231, .10)), inset 0 1px 0 rgba(255,255,255,.11), inset 0 0 0 1px rgba(255,255,255,.025) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(145%);
+  backdrop-filter: blur(24px) saturate(145%);
+}
+
+.page .n-card,
+.health-page .n-card {
+  border-radius: var(--radius-glass) !important;
+}
+
+.page .card:hover,
+.page .settings-card:hover,
+.page .fan-group:hover,
+.page .rgb-device:hover,
+.page .lcd-config:hover,
+.page .aio:hover {
+  border-color: var(--page-accent, rgba(100, 199, 255, .48)) !important;
+  box-shadow: 0 20px 44px rgba(0, 0, 0, .34), 0 0 25px var(--page-glow, rgba(41, 161, 255, .15)), inset 0 1px 0 rgba(255,255,255,.13) !important;
+}
+
+.page .card-inset,
+.page .device-row,
+.page .rgb-item,
+.page .screen-row,
+.page .lcd-row,
+.page .zone-row,
+.page .region-body,
+.page .template-section,
+.page .section-body,
+.page .settings-row,
+.page .assignment-row,
+.page .port-row,
+.page .sync-pill,
+.page .n-input,
+.page .n-input-number,
+.page .n-base-selection,
+.page .n-date-picker,
+.page .n-time-picker,
+.page .n-color-picker,
+.page .n-slider .n-slider-rail,
+.page .n-tabs-nav {
+  background-color: rgba(6, 15, 28, .52);
+  border-color: rgba(116, 159, 216, .22);
+  -webkit-backdrop-filter: blur(16px) saturate(135%);
+  backdrop-filter: blur(16px) saturate(135%);
+}
+
+.page .device-row,
+.page .rgb-item,
+.page .screen-row,
+.page .lcd-row,
+.page .zone-row,
+.page .region-body,
+.page .template-section,
+.page .section-body,
+.page .settings-row,
+.page .assignment-row,
+.page .port-row {
+  border-color: rgba(116, 159, 216, .20);
+  border-radius: 10px;
+}
+
+.n-modal .n-card,
+.n-dialog,
+.n-popover,
+.n-dropdown-menu,
+.n-select-menu,
+.n-date-panel,
+.n-time-picker-panel,
+.n-color-picker-panel {
+  border: 1px solid rgba(125, 178, 244, .38) !important;
+  background: linear-gradient(145deg, rgba(26, 43, 68, .94), rgba(8, 19, 34, .96)) !important;
+  box-shadow: 0 22px 70px rgba(0, 0, 0, .52), 0 0 28px rgba(52, 139, 255, .14), inset 0 1px 0 rgba(255,255,255,.10) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
+  backdrop-filter: blur(28px) saturate(150%);
+}
+.editor-window .n-button:not(.n-button--text-type):not(.n-button--quaternary-type),
+.browser-window .n-button:not(.n-button--text-type):not(.n-button--quaternary-type) {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.13), 0 4px 16px rgba(13,75,145,.16);
+}
+
+.page .n-button:not(.n-button--text-type):not(.n-button--quaternary-type),
+.health-page .n-button:not(.n-button--text-type):not(.n-button--quaternary-type) {
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.13), 0 4px 16px rgba(13, 75, 145, .16);
+  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease;
+}
+.page .n-button:not(:disabled):hover,
+.health-page .n-button:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.18), 0 0 16px rgba(51, 163, 255, .22);
+}
+
+.page .n-tabs .n-tabs-tab,
+.page .n-radio-button,
+.page .n-checkbox .n-checkbox-box,
+.page .n-switch .n-switch__rail {
+  transition: color .18s ease, background .18s ease, box-shadow .18s ease, border-color .18s ease;
+}
+.page .n-tabs .n-tabs-tab--active,
+.page .n-radio-button--checked {
+  text-shadow: 0 0 12px rgba(58, 183, 255, .34);
+}
+.page .n-slider .n-slider-handle,
+.page .n-slider .n-slider-handle-indicator,
+.page .n-color-picker-trigger,
+.page .n-checkbox .n-checkbox-box--checked,
+.page .n-switch.n-switch--active .n-switch__rail {
+  box-shadow: 0 0 12px var(--page-glow, rgba(25, 217, 243, .20));
+}
+.page .n-alert,
+.health-page .n-alert {
+  border: 1px solid rgba(132, 177, 236, .25);
+  background: linear-gradient(145deg, rgba(26, 43, 66, .76), rgba(9, 20, 36, .80));
+  -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
+}
+.page .n-data-table,
+.page .n-data-table .n-data-table-th,
+.page .n-data-table .n-data-table-td {
+  background-color: transparent;
+}
+.page .n-data-table .n-data-table-tr:hover .n-data-table-td {
+  background-color: rgba(79, 147, 225, .10);
+}
+.fans-page .curve-editor .svg {
+  background: linear-gradient(145deg, rgba(24, 42, 67, .76), rgba(7, 17, 31, .82)) !important;
+  border-color: rgba(244, 106, 193, .26) !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 8px 24px rgba(0,0,0,.14);
+}
+
+[data-theme="light"] .page .card,
+[data-theme="light"] .page .n-card,
+[data-theme="light"] .health-page .card,
+[data-theme="light"] .health-page .n-card,
+[data-theme="light"] .page .settings-card,
+[data-theme="light"] .page .fan-group,
+[data-theme="light"] .page .rgb-device,
+[data-theme="light"] .page .lcd-config,
+[data-theme="light"] .page .aio,
+[data-theme="light"] .health-page > details,
+[data-theme="light"] .health-page .check-list,
+[data-theme="light"] .health-page .check-row {
+  background-image: radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--page-accent, #6e9fdf) 14%, transparent), transparent 65%), linear-gradient(145deg, rgba(255,255,255,.88), rgba(238,245,255,.84)) !important;
+  box-shadow: 0 12px 32px rgba(23, 52, 91, .12), inset 0 1px 0 rgba(255,255,255,.95) !important;
+}
+
+button, [role="button"], a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.n-button, .n-input, .n-base-selection { transition-duration: .16s; }
+.section-title { letter-spacing: -.015em; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border-radius: 999px;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.section-title {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  margin: 0 0 var(--space-3);
+  color: var(--text-primary);
+}
+
+.muted {
+  color: var(--text-secondary);
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.pulse-danger {
+  animation: pulse-danger 1.4s ease-in-out infinite;
+}
+@keyframes pulse-danger {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.page-leave-to {
+  opacity: 0;
+}
+
+/* Sensor pickers: dropdown expands to the longest option (min trigger
+   width), capped with a horizontal scroll fallback for extreme labels */
+.sensor-select-menu {
+  max-width: min(560px, 90vw);
+  overflow-x: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior:auto !important; animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; }
+}

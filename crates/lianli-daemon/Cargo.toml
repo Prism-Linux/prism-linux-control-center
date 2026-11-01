@@ -1,0 +1,34 @@
+[package]
+name = "lianli-daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "lianli-daemon"
+path = "src/main.rs"
+
+[dependencies]
+lianli-shared = { path = "../lianli-shared" }
+lianli-control = { path = "../lianli-control" }
+lianli-transport = { path = "../lianli-transport" }
+lianli-devices = { path = "../lianli-devices" }
+lianli-display = { path = "../lianli-display" }
+lianli-media = { path = "../lianli-media" }
+base64 = { workspace = true }
+clap = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+anyhow = { workspace = true }
+parking_lot = { workspace = true }
+rusb = { workspace = true }
+notify = { workspace = true }
+image = { workspace = true }
+turbojpeg = { workspace = true }
+signal-hook = { workspace = true }
+libc = { workspace = true }
+hidapi = { workspace = true }
+tempfile = { workspace = true }

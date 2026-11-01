@@ -1,0 +1,1394 @@
+//! RGB/LED effect types shared between daemon, devices, and GUI.
+
+pub mod profile;
+pub use profile::{RgbPlaybackTiming, RgbRenderFamily, RgbRenderProfile, MAX_RGB_ANIMATION_FRAMES};
+
+use crate::device_id::DeviceFamily;
+use crate::ui_message::UiMessage;
+use serde::{Deserialize, Serialize};
+
+/// Supported RGB effect modes.
+///
+/// These map to hardware-native modes for wired devices (TL Fan, ENE 6K77, Galahad2).
+/// For wireless devices, effects are host-rendered and streamed as RGB frames.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RgbMode {
+    Off,
+    Direct,          // Per-LED control (used by OpenRGB UpdateLEDs)
+    Static,          // Solid color
+    Rainbow,         // 1
+    RainbowMorph,    // 2
+    Breathing,       // 4
+    Runway,          // 5
+    Meteor,          // 6
+    ColorCycle,      // 7
+    Staggered,       // 8
+    Tide,            // 9
+    Mixing,          // 10
+    Voice,           // 11
+    Door,            // 12
+    Render,          // 13
+    Ripple,          // 14
+    Reflect,         // 15
+    TailChasing,     // 16
+    Paint,           // 17
+    PingPong,        // 18
+    Stack,           // 19
+    StackMulti,      // 20 (ENE6K77 single-ring)
+    Neon,            // 21 (ENE6K77 single-ring)
+    CoverCycle,      // 22
+    Wave,            // 21
+    Racing,          // 22
+    Lottery,         // 23
+    Intertwine,      // 24
+    MeteorShower,    // 25
+    Collide,         // 26
+    ElectricCurrent, // 27
+    Kaleidoscope,    // 28
+    // Pump-specific modes (Galahad2 Trinity)
+    BigBang,
+    Vortex,
+    Pump,
+    ColorsMorph,
+    TaiChi,
+    CrossingOver,
+    ColorfulStarryNight,
+    StaticStarryNight,
+    Bounce,
+    // HydroShift LCD / Galahad2 LCD / Galahad2 Vision
+    TickerTape,
+    Fluctuation,
+    Transmit,
+    Burst,
+    // ENE6K77 extended modes (AL/SLInfinity/ALV2 per-variant)
+    MopUp,
+    PacMan,
+    MeteorRainbow,
+    Spring,
+    Scan,
+    Contest,
+    Warning,
+    SpanningTeacups,
+    Tornado,
+    DoubleMeteor,
+    MeteorContest,
+    MeteorMix,
+    ReturnArc,
+    DoubleArc,
+    HeartBeat,
+    HeartBeatRunway,
+    Disco,
+    SeaFlow,
+    Echo,
+    ColorfulCity,
+    Twinkle,
+    Groove,
+    Tunnel,
+    BreathingRainbow,
+    StaticColorful,
+    BreathingColorful,
+    // Strimer Plus modes
+    Snooker,
+    BlowUp,
+    ShockWave,
+    BulletStack,
+    Drizzling,
+    FadeOut,
+    ColorTransfer,
+    CrossOver,
+    Parallel,
+    Endless,
+    River,
+    Duel,
+    Hourglass,
+    Pioneer,
+    ShuttleRun,
+    GradientRibbon,
+    RainbowWave,
+    ColorfulMeteor,
+    Wing,
+    Drumming,
+    Boomerang,
+    CandyBox,
+    Transformation,
+}
+
+impl RgbMode {
+    /// Map to TL Fan / Galahad2 mode byte (1-28+). Returns None for non-mappable modes.
+    pub fn to_tl_mode_byte(self) -> Option<u8> {
+        match self {
+            Self::Rainbow => Some(1),
+            Self::RainbowMorph => Some(2),
+            Self::Static => Some(3),
+            Self::Breathing => Some(4),
+            Self::Runway => Some(5),
+            Self::Meteor => Some(6),
+            Self::ColorCycle => Some(7),
+            Self::Staggered => Some(8),
+            Self::Tide => Some(9),
+            Self::Mixing => Some(10),
+            Self::Voice => Some(11),
+            Self::Door => Some(12),
+            Self::Render => Some(13),
+            Self::Ripple => Some(14),
+            Self::Reflect => Some(15),
+            Self::TailChasing => Some(16),
+            Self::Paint => Some(17),
+            Self::PingPong => Some(18),
+            Self::Stack => Some(19),
+            Self::CoverCycle => Some(20),
+            Self::Wave => Some(21),
+            Self::Racing => Some(22),
+            Self::Lottery => Some(23),
+            Self::Intertwine => Some(24),
+            Self::MeteorShower => Some(25),
+            Self::Collide => Some(26),
+            Self::ElectricCurrent => Some(27),
+            Self::Kaleidoscope => Some(28),
+            _ => None,
+        }
+    }
+
+    pub fn to_galahad2_mode_byte(self) -> Option<u8> {
+        match self {
+            Self::Rainbow => Some(1),
+            Self::RainbowMorph => Some(2),
+            Self::Static => Some(3),
+            Self::Breathing => Some(4),
+            Self::Runway => Some(5),
+            Self::Meteor => Some(6),
+            Self::Vortex => Some(7),
+            Self::CrossingOver => Some(8),
+            Self::TaiChi => Some(9),
+            Self::ColorfulStarryNight => Some(10),
+            Self::StaticStarryNight => Some(11),
+            Self::Voice => Some(12),
+            Self::BigBang => Some(13),
+            Self::Pump => Some(14),
+            Self::ColorsMorph => Some(15),
+            Self::Bounce => Some(16),
+            _ => None,
+        }
+    }
+
+    pub fn to_hydroshift_lcd_mode_byte(self) -> Option<u8> {
+        match self {
+            Self::Rainbow => Some(1),
+            Self::RainbowMorph => Some(2),
+            Self::Static => Some(3),
+            Self::Breathing => Some(4),
+            Self::Runway => Some(5),
+            Self::Meteor => Some(6),
+            Self::TickerTape => Some(7),
+            Self::Fluctuation => Some(8),
+            Self::Transmit => Some(9),
+            Self::ColorfulStarryNight => Some(10),
+            Self::StaticStarryNight => Some(11),
+            Self::Voice => Some(12),
+            Self::BigBang => Some(13),
+            Self::Burst => Some(14),
+            Self::ColorsMorph => Some(15),
+            Self::Bounce => Some(16),
+            _ => None,
+        }
+    }
+
+    pub fn is_valid_galahad2_pump_scope(self, scope: RgbScope) -> bool {
+        let Some(byte) = self.to_galahad2_mode_byte() else {
+            return false;
+        };
+        match scope {
+            RgbScope::Inner => matches!(byte, 1..=6 | 9..=12 | 14),
+            RgbScope::Outer => matches!(byte, 1..=6 | 9..=12 | 14 | 16),
+            _ => matches!(byte, 1..=15),
+        }
+    }
+
+    /// Map from TL Fan mode byte to RgbMode.
+    pub fn from_tl_mode_byte(byte: u8) -> Option<Self> {
+        match byte {
+            1 => Some(Self::Rainbow),
+            2 => Some(Self::RainbowMorph),
+            3 => Some(Self::Static),
+            4 => Some(Self::Breathing),
+            5 => Some(Self::Runway),
+            6 => Some(Self::Meteor),
+            7 => Some(Self::ColorCycle),
+            8 => Some(Self::Staggered),
+            9 => Some(Self::Tide),
+            10 => Some(Self::Mixing),
+            11 => Some(Self::Voice),
+            12 => Some(Self::Door),
+            13 => Some(Self::Render),
+            14 => Some(Self::Ripple),
+            15 => Some(Self::Reflect),
+            16 => Some(Self::TailChasing),
+            17 => Some(Self::Paint),
+            18 => Some(Self::PingPong),
+            19 => Some(Self::Stack),
+            20 => Some(Self::CoverCycle),
+            21 => Some(Self::Wave),
+            22 => Some(Self::Racing),
+            23 => Some(Self::Lottery),
+            24 => Some(Self::Intertwine),
+            25 => Some(Self::MeteorShower),
+            26 => Some(Self::Collide),
+            27 => Some(Self::ElectricCurrent),
+            28 => Some(Self::Kaleidoscope),
+            _ => None,
+        }
+    }
+
+    /// Inverse of `to_galahad2_mode_byte`.
+    pub fn from_galahad2_mode_byte(byte: u8) -> Option<Self> {
+        match byte {
+            1 => Some(Self::Rainbow),
+            2 => Some(Self::RainbowMorph),
+            3 => Some(Self::Static),
+            4 => Some(Self::Breathing),
+            5 => Some(Self::Runway),
+            6 => Some(Self::Meteor),
+            7 => Some(Self::Vortex),
+            8 => Some(Self::CrossingOver),
+            9 => Some(Self::TaiChi),
+            10 => Some(Self::ColorfulStarryNight),
+            11 => Some(Self::StaticStarryNight),
+            12 => Some(Self::Voice),
+            13 => Some(Self::BigBang),
+            14 => Some(Self::Pump),
+            15 => Some(Self::ColorsMorph),
+            16 => Some(Self::Bounce),
+            _ => None,
+        }
+    }
+
+    /// Inverse of `to_hydroshift_lcd_mode_byte`.
+    pub fn from_hydroshift_lcd_mode_byte(byte: u8) -> Option<Self> {
+        match byte {
+            1 => Some(Self::Rainbow),
+            2 => Some(Self::RainbowMorph),
+            3 => Some(Self::Static),
+            4 => Some(Self::Breathing),
+            5 => Some(Self::Runway),
+            6 => Some(Self::Meteor),
+            7 => Some(Self::TickerTape),
+            8 => Some(Self::Fluctuation),
+            9 => Some(Self::Transmit),
+            10 => Some(Self::ColorfulStarryNight),
+            11 => Some(Self::StaticStarryNight),
+            12 => Some(Self::Voice),
+            13 => Some(Self::BigBang),
+            14 => Some(Self::Burst),
+            15 => Some(Self::ColorsMorph),
+            16 => Some(Self::Bounce),
+            _ => None,
+        }
+    }
+
+    /// Family-aware mode-byte lookup.
+    ///
+    /// Single entry point for driver code: pass the device family, get the
+    /// hardware byte (or `None` if the mode isn't supported by that family).
+    pub fn mode_byte_for(self, family: DeviceFamily) -> Option<u8> {
+        match family {
+            DeviceFamily::TlFan | DeviceFamily::SlInf | DeviceFamily::Clv1 => {
+                self.to_tl_mode_byte()
+            }
+            DeviceFamily::Galahad2Trinity => self.to_galahad2_mode_byte(),
+            DeviceFamily::HydroShiftLcd | DeviceFamily::Galahad2Lcd | DeviceFamily::WirelessAio => {
+                self.to_hydroshift_lcd_mode_byte()
+            }
+            // Ene6k77 has per-variant mode tables handled by the driver's
+            // map_mode_to_ene (single-ring vs dual-ring differ). Returning
+            // None here prevents the stale TL-table fallback from sending
+            // wrong bytes if a caller ever wires this path.
+            _ => None,
+        }
+    }
+
+    /// Family-aware inverse of `mode_byte_for`.
+    pub fn from_mode_byte_for(family: DeviceFamily, byte: u8) -> Option<Self> {
+        match family {
+            DeviceFamily::TlFan | DeviceFamily::SlInf | DeviceFamily::Clv1 => {
+                Self::from_tl_mode_byte(byte)
+            }
+            DeviceFamily::Galahad2Trinity => Self::from_galahad2_mode_byte(byte),
+            DeviceFamily::HydroShiftLcd | DeviceFamily::Galahad2Lcd | DeviceFamily::WirelessAio => {
+                Self::from_hydroshift_lcd_mode_byte(byte)
+            }
+            _ => None,
+        }
+    }
+
+    /// Display name for GUI.
+    pub fn display_name(self) -> &'static str {
+        match self {
+            Self::Off => "Off",
+            Self::Direct => "Direct",
+            Self::Static => "Static",
+            Self::Rainbow => "Rainbow",
+            Self::RainbowMorph => "Rainbow Morph",
+            Self::Breathing => "Breathing",
+            Self::Runway => "Runway",
+            Self::Meteor => "Meteor",
+            Self::ColorCycle => "Color Cycle",
+            Self::Staggered => "Staggered",
+            Self::Tide => "Tide",
+            Self::Mixing => "Mixing",
+            Self::Voice => "Voice",
+            Self::Door => "Door",
+            Self::Render => "Render",
+            Self::Ripple => "Ripple",
+            Self::Reflect => "Reflect",
+            Self::TailChasing => "Tail Chasing",
+            Self::Paint => "Paint",
+            Self::PingPong => "Ping Pong",
+            Self::Stack => "Stack",
+            Self::StackMulti => "Stack Multi",
+            Self::Neon => "Neon",
+            Self::CoverCycle => "Cover Cycle",
+            Self::Wave => "Wave",
+            Self::Racing => "Racing",
+            Self::Lottery => "Lottery",
+            Self::Intertwine => "Intertwine",
+            Self::MeteorShower => "Meteor Shower",
+            Self::Collide => "Collide",
+            Self::ElectricCurrent => "Electric Current",
+            Self::Kaleidoscope => "Kaleidoscope",
+            Self::BigBang => "Big Bang",
+            Self::Vortex => "Vortex",
+            Self::Pump => "Pump",
+            Self::ColorsMorph => "Colors Morph",
+            Self::TaiChi => "Tai Chi",
+            Self::CrossingOver => "Crossing Over",
+            Self::ColorfulStarryNight => "Colorful Starry Night",
+            Self::StaticStarryNight => "Static Starry Night",
+            Self::Bounce => "Bounce",
+            Self::TickerTape => "Ticker Tape",
+            Self::Fluctuation => "Fluctuation",
+            Self::Transmit => "Transmit",
+            Self::Burst => "Burst",
+            Self::MopUp => "Mop Up",
+            Self::PacMan => "PacMan",
+            Self::MeteorRainbow => "Meteor Rainbow",
+            Self::Spring => "Spring",
+            Self::Scan => "Scan",
+            Self::Contest => "Contest",
+            Self::Warning => "Warning",
+            Self::SpanningTeacups => "Spanning Teacups",
+            Self::Tornado => "Tornado",
+            Self::DoubleMeteor => "Double Meteor",
+            Self::MeteorContest => "Meteor Contest",
+            Self::MeteorMix => "Meteor Mix",
+            Self::ReturnArc => "Return Arc",
+            Self::DoubleArc => "Double Arc",
+            Self::HeartBeat => "Heart Beat",
+            Self::HeartBeatRunway => "Heart Beat Runway",
+            Self::Disco => "Disco",
+            Self::SeaFlow => "Sea Flow",
+            Self::Echo => "Echo",
+            Self::ColorfulCity => "Colorful City",
+            Self::Twinkle => "Twinkle",
+            Self::Groove => "Groove",
+            Self::Tunnel => "Tunnel",
+            Self::BreathingRainbow => "Breathing Rainbow",
+            Self::Snooker => "Snooker",
+            Self::BlowUp => "Blow Up",
+            Self::ShockWave => "Shock Wave",
+            Self::BulletStack => "Bullet Stack",
+            Self::Drizzling => "Drizzling",
+            Self::FadeOut => "Fade Out",
+            Self::ColorTransfer => "Color Transfer",
+            Self::CrossOver => "Cross Over",
+            Self::Parallel => "Parallel",
+            Self::Endless => "Endless",
+            Self::River => "River",
+            Self::Duel => "Duel",
+            Self::Hourglass => "Hourglass",
+            Self::Pioneer => "Pioneer",
+            Self::ShuttleRun => "Shuttle Run",
+            Self::GradientRibbon => "Gradient Ribbon",
+            Self::RainbowWave => "Rainbow Wave",
+            Self::ColorfulMeteor => "Colorful Meteor",
+            Self::Wing => "Wing",
+            Self::Drumming => "Drumming",
+            Self::Boomerang => "Boomerang",
+            Self::CandyBox => "Candy Box",
+            Self::Transformation => "Transformation",
+            Self::StaticColorful => "Static corner colors",
+            Self::BreathingColorful => "Breathing corner colors",
+        }
+    }
+
+    /// Inverse of `display_name` — parse a mode from its GUI string.
+    ///
+    /// Used by the OpenRGB server (which receives mode names back from clients)
+    /// and by the GUI when reading a serialized preset. Case-sensitive; pass
+    /// strings produced by `display_name()` for guaranteed round-trip.
+    pub fn from_display_name(name: &str) -> Option<Self> {
+        if name.is_empty() {
+            return None;
+        }
+        // Off is intentionally NOT in this list: it is a sentinel used by the
+        // GUI but the OpenRGB protocol never sends "Off" — it sends brightness 0.
+        Some(match name {
+            "Direct" => Self::Direct,
+            "Static" => Self::Static,
+            "Rainbow" => Self::Rainbow,
+            "Rainbow Morph" => Self::RainbowMorph,
+            "Breathing" => Self::Breathing,
+            "Runway" => Self::Runway,
+            "Meteor" => Self::Meteor,
+            "Color Cycle" => Self::ColorCycle,
+            "Staggered" => Self::Staggered,
+            "Tide" => Self::Tide,
+            "Mixing" => Self::Mixing,
+            "Voice" => Self::Voice,
+            "Door" => Self::Door,
+            "Render" => Self::Render,
+            "Ripple" => Self::Ripple,
+            "Reflect" => Self::Reflect,
+            "Tail Chasing" => Self::TailChasing,
+            "Paint" => Self::Paint,
+            "Ping Pong" => Self::PingPong,
+            "Stack" => Self::Stack,
+            "Stack Multi" => Self::StackMulti,
+            "Neon" => Self::Neon,
+            "Cover Cycle" => Self::CoverCycle,
+            "Wave" => Self::Wave,
+            "Racing" => Self::Racing,
+            "Lottery" => Self::Lottery,
+            "Intertwine" => Self::Intertwine,
+            "Meteor Shower" => Self::MeteorShower,
+            "Collide" => Self::Collide,
+            "Electric Current" => Self::ElectricCurrent,
+            "Kaleidoscope" => Self::Kaleidoscope,
+            "Big Bang" => Self::BigBang,
+            "Vortex" => Self::Vortex,
+            "Pump" => Self::Pump,
+            "Colors Morph" => Self::ColorsMorph,
+            "Tai Chi" => Self::TaiChi,
+            "Crossing Over" => Self::CrossingOver,
+            "Colorful Starry Night" => Self::ColorfulStarryNight,
+            "Static Starry Night" => Self::StaticStarryNight,
+            "Bounce" => Self::Bounce,
+            "Ticker Tape" => Self::TickerTape,
+            "Fluctuation" => Self::Fluctuation,
+            "Transmit" => Self::Transmit,
+            "Burst" => Self::Burst,
+            "Mop Up" => Self::MopUp,
+            "PacMan" => Self::PacMan,
+            "Meteor Rainbow" => Self::MeteorRainbow,
+            "Spring" => Self::Spring,
+            "Scan" => Self::Scan,
+            "Contest" => Self::Contest,
+            "Warning" => Self::Warning,
+            "Spanning Teacups" => Self::SpanningTeacups,
+            "Tornado" => Self::Tornado,
+            "Double Meteor" => Self::DoubleMeteor,
+            "Meteor Contest" => Self::MeteorContest,
+            "Meteor Mix" => Self::MeteorMix,
+            "Return Arc" => Self::ReturnArc,
+            "Double Arc" => Self::DoubleArc,
+            "Heart Beat" => Self::HeartBeat,
+            "Heart Beat Runway" => Self::HeartBeatRunway,
+            "Disco" => Self::Disco,
+            "Sea Flow" => Self::SeaFlow,
+            "Echo" => Self::Echo,
+            "Colorful City" => Self::ColorfulCity,
+            "Twinkle" => Self::Twinkle,
+            "Groove" => Self::Groove,
+            "Tunnel" => Self::Tunnel,
+            "Breathing Rainbow" => Self::BreathingRainbow,
+            "Snooker" => Self::Snooker,
+            "Blow Up" => Self::BlowUp,
+            "Shock Wave" => Self::ShockWave,
+            "Bullet Stack" => Self::BulletStack,
+            "Drizzling" => Self::Drizzling,
+            "Fade Out" => Self::FadeOut,
+            "Color Transfer" => Self::ColorTransfer,
+            "Cross Over" => Self::CrossOver,
+            "Parallel" => Self::Parallel,
+            "Endless" => Self::Endless,
+            "River" => Self::River,
+            "Duel" => Self::Duel,
+            "Hourglass" => Self::Hourglass,
+            "Pioneer" => Self::Pioneer,
+            "Shuttle Run" => Self::ShuttleRun,
+            "Gradient Ribbon" => Self::GradientRibbon,
+            "Rainbow Wave" => Self::RainbowWave,
+            "Colorful Meteor" => Self::ColorfulMeteor,
+            "Wing" => Self::Wing,
+            "Drumming" => Self::Drumming,
+            "Boomerang" => Self::Boomerang,
+            "Candy Box" => Self::CandyBox,
+            "Transformation" => Self::Transformation,
+            _ => return None,
+        })
+    }
+}
+
+/// Effect animation direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RgbDirection {
+    #[default]
+    Clockwise,
+    CounterClockwise,
+    Up,
+    Down,
+    Spread,
+    Gather,
+}
+
+impl RgbDirection {
+    /// Map to TL Fan / Galahad2 direction byte.
+    pub fn to_tl_byte(self) -> u8 {
+        match self {
+            Self::Clockwise => 0,
+            Self::CounterClockwise => 1,
+            Self::Up => 2,
+            Self::Down => 3,
+            Self::Spread => 4,
+            Self::Gather => 5,
+        }
+    }
+
+    /// Map to ENE 6K77 direction byte (only Left/Right).
+    pub fn to_ene_byte(self) -> u8 {
+        match self {
+            Self::CounterClockwise => 1, // Left
+            _ => 0,                      // Right (default)
+        }
+    }
+}
+
+/// RGB effect scope (which LEDs are targeted).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum RgbScope {
+    Fan,
+    #[default]
+    All,
+    Top,
+    Bottom,
+    Inner,
+    Outer,
+    Center,
+    Pump,
+    Front,
+    Rear,
+    Segment1,
+    Segment2,
+    Segment3,
+    Segment4,
+    Segment5,
+    Segment6,
+}
+
+/// A complete RGB effect definition.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbEffect {
+    pub mode: RgbMode,
+    /// Up to 4 RGB colors.
+    #[serde(default = "default_colors")]
+    pub colors: Vec<[u8; 3]>,
+    /// Speed: 0-4 (slowest to fastest).
+    #[serde(default = "default_speed")]
+    pub speed: u8,
+    /// Brightness: 0-4 (dimmest to brightest).
+    #[serde(default = "default_brightness")]
+    pub brightness: u8,
+    /// Animation direction.
+    #[serde(default)]
+    pub direction: RgbDirection,
+    /// Which LED scope to target (All, Top, Bottom, Inner, Outer).
+    #[serde(default)]
+    pub scope: RgbScope,
+    /// Hardware "disabled" flag, turns LEDs off without changing mode/colors.
+    #[serde(default)]
+    pub disabled: bool,
+}
+
+fn default_colors() -> Vec<[u8; 3]> {
+    vec![[0, 0, 0]]
+}
+
+fn default_speed() -> u8 {
+    2
+}
+
+fn default_brightness() -> u8 {
+    4
+}
+
+/// Sentinel brightness value indicating the LEDs should be fully off. Distinct
+/// from `0` (Lowest) because the firmware uses a dedicated off byte
+/// (ENE6K77: `0x08`, Strimer: `0xFF`).
+pub const BRIGHTNESS_OFF: u8 = 255;
+
+pub fn is_brightness_off(brightness: u8) -> bool {
+    brightness == BRIGHTNESS_OFF
+}
+
+/// Clamp a brightness value to the 0-4 firmware scale. The `Off` sentinel
+/// collapses to 0 for devices without a dedicated off byte.
+pub fn brightness_scale(brightness: u8) -> u8 {
+    if is_brightness_off(brightness) {
+        0
+    } else {
+        brightness.min(4)
+    }
+}
+
+impl Default for RgbEffect {
+    fn default() -> Self {
+        Self {
+            mode: RgbMode::Static,
+            colors: vec![[255, 255, 255]],
+            speed: default_speed(),
+            brightness: default_brightness(),
+            direction: RgbDirection::default(),
+            scope: RgbScope::default(),
+            disabled: false,
+        }
+    }
+}
+
+/// Per-zone RGB configuration (stored in config file).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbZoneConfig {
+    pub zone_index: u8,
+    pub effect: RgbEffect,
+    /// Fan orientation: swap left/right direction.
+    #[serde(default)]
+    pub swap_lr: bool,
+    /// Fan orientation: swap top/bottom direction.
+    #[serde(default)]
+    pub swap_tb: bool,
+}
+
+/// Per-device RGB configuration.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbDeviceConfig {
+    pub device_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fan_led_count: Option<u16>,
+    /// Use motherboard ARGB header instead of software-controlled effects.
+    #[serde(default)]
+    pub mb_rgb_sync: bool,
+    /// Name of the currently active RGB preset (if any).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_preset: Option<String>,
+    pub zones: Vec<RgbZoneConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regions: Option<Vec<RgbRegionConfig>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effect_memory: Vec<RgbEffectMemory>,
+}
+
+impl RgbDeviceConfig {
+    /// Only for legacy controllers where zone zero applied to the entire fan group.
+    pub fn expand_legacy_group_zone(&mut self, fan_slots: u8) -> bool {
+        if self.regions.is_some() || fan_slots <= 1 {
+            return false;
+        }
+        let [zone] = self.zones.as_slice() else {
+            return false;
+        };
+        if zone.zone_index != 0 {
+            return false;
+        }
+        let zone = zone.clone();
+        self.zones
+            .extend((1..fan_slots).map(|zone_index| RgbZoneConfig {
+                zone_index,
+                ..zone.clone()
+            }));
+        true
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbEffectMemory {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zone: Option<u8>,
+    pub effect: RgbEffect,
+    #[serde(default)]
+    pub flip: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbRegionConfig {
+    pub effect: RgbEffect,
+    #[serde(default)]
+    pub flip: bool,
+}
+
+/// Top-level RGB configuration section.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbAppConfig {
+    /// Whether RGB control is enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Whether to run the OpenRGB SDK server.
+    #[serde(default)]
+    pub openrgb_server: bool,
+    /// OpenRGB SDK server port.
+    #[serde(default = "default_openrgb_port")]
+    pub openrgb_port: u16,
+    /// Expose independent AL V2 inner/outer controls, grouped as zones on SDK v6.
+    #[serde(default)]
+    pub openrgb_regions: bool,
+    /// Expose wireless fan groups as one zone per fan instead of one zone
+    /// spanning the group.
+    #[serde(default)]
+    pub openrgb_per_fan_zones: bool,
+    /// Per-device RGB settings.
+    #[serde(default)]
+    pub devices: Vec<RgbDeviceConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge_lighting: Option<MergeLightingConfig>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_openrgb_port() -> u16 {
+    6743
+}
+
+impl Default for RgbAppConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            openrgb_server: false,
+            openrgb_port: default_openrgb_port(),
+            openrgb_regions: false,
+            openrgb_per_fan_zones: false,
+            devices: Vec::new(),
+            merge_lighting: None,
+        }
+    }
+}
+
+/// A single zone's state within a named RGB preset.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RgbPresetZone {
+    pub zone: u8,
+    #[serde(default)]
+    pub colors: Vec<[u8; 3]>,
+    #[serde(default)]
+    pub effect: Option<RgbEffect>,
+}
+
+/// A named per-LED color preset that can be saved to config and applied later.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RgbPreset {
+    pub name: String,
+    pub device_id: String,
+    pub zones: Vec<RgbPresetZone>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub regions: Option<Vec<RgbRegionConfig>>,
+}
+
+/// Information about an RGB zone, reported to GUI/OpenRGB.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbZoneInfo {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name_ui: Option<UiMessage>,
+    pub led_count: u16,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbLedCountControl {
+    pub zone: u8,
+    pub min: u16,
+    pub max: u16,
+    pub default: u16,
+}
+
+impl RgbLedCountControl {
+    pub fn resolve(self, count: Option<u16>) -> Result<u16, String> {
+        let count = count.unwrap_or(self.default);
+        if !(self.min..=self.max).contains(&count) {
+            return Err(format!(
+                "LED count must be between {} and {}",
+                self.min, self.max
+            ));
+        }
+        Ok(count)
+    }
+}
+
+#[cfg(test)]
+mod led_count_tests {
+    use super::*;
+
+    #[test]
+    fn effect_values_enforce_palette_and_per_fan_boundaries() {
+        let mut spec = RgbEffectParameters {
+            mode: RgbMode::StaticColorful,
+            min_colors: 2,
+            max_colors: 4,
+            per_fan_colors: false,
+            directions: Vec::new(),
+            supports_speed: true,
+        };
+        for colors in 0..=5 {
+            assert_eq!(
+                spec.validate_values(4, 4, colors, 3).is_ok(),
+                (2..=4).contains(&colors)
+            );
+        }
+        assert!(spec.validate_values(5, 4, 2, 3).is_err());
+        assert!(spec.validate_values(4, 5, 2, 3).is_err());
+        spec.per_fan_colors = true;
+        for colors in 0..=5 {
+            assert_eq!(spec.validate_values(0, 0, colors, 3).is_ok(), colors == 3);
+        }
+        assert!(spec.validate_values(0, 0, 0, 0).is_ok());
+    }
+
+    #[test]
+    fn old_openrgb_configuration_keeps_legacy_topology() {
+        let mut config: RgbAppConfig = serde_json::from_str(r#"{"openrgb_server":true}"#).unwrap();
+        assert!(!config.openrgb_regions);
+        assert!(!config.openrgb_per_fan_zones);
+        assert!(!RgbAppConfig::default().openrgb_regions);
+        assert!(!RgbAppConfig::default().openrgb_per_fan_zones);
+        config.openrgb_regions = true;
+        config.openrgb_per_fan_zones = true;
+        let restored: RgbAppConfig =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert_eq!(restored, config);
+    }
+
+    #[test]
+    fn old_rgb_config_keeps_default_count_and_new_count_roundtrips() {
+        let mut saved: RgbDeviceConfig =
+            serde_json::from_str(r#"{"device_id":"offline","mb_rgb_sync":false,"zones":[]}"#)
+                .unwrap();
+        let control = RgbLedCountControl {
+            zone: 1,
+            min: 8,
+            max: 50,
+            default: 24,
+        };
+        assert_eq!(control.resolve(saved.fan_led_count).unwrap(), 24);
+        assert!(!serde_json::to_string(&saved)
+            .unwrap()
+            .contains("fan_led_count"));
+        saved.fan_led_count = Some(50);
+        let restored: RgbDeviceConfig =
+            serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        assert_eq!(restored.fan_led_count, Some(50));
+        assert_eq!(restored, saved);
+    }
+}
+
+/// RGB capabilities reported per device.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbDeviceCapabilities {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fan_led_count_control: Option<RgbLedCountControl>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deferred_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deferred_reason_ui: Option<UiMessage>,
+    #[serde(default)]
+    pub hardware_group_effects: bool,
+    #[serde(default)]
+    pub group_effect_modes: Vec<RgbMode>,
+    #[serde(default)]
+    pub zone_effect_modes: Vec<RgbMode>,
+    pub device_id: String,
+    pub device_name: String,
+    pub supported_modes: Vec<RgbMode>,
+    #[serde(default)]
+    pub software_modes: Vec<RgbMode>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync_led_count: Option<u16>,
+    #[serde(default)]
+    pub sync_effect_parameters: Vec<RgbEffectParameters>,
+    #[serde(default)]
+    pub effect_regions: Vec<RgbScope>,
+    #[serde(default)]
+    pub effect_parameters: Vec<RgbEffectParameters>,
+    #[serde(default)]
+    pub region_parameters: Vec<RgbRegionParameters>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub render_profile: Option<RgbRenderProfile>,
+    pub zones: Vec<RgbZoneInfo>,
+    /// Whether this device supports per-LED direct color control.
+    pub supports_direct: bool,
+    /// Whether this device supports motherboard ARGB sync.
+    pub supports_mb_rgb_sync: bool,
+    /// Total number of LEDs across all zones.
+    pub total_led_count: u16,
+    /// Supported scopes per zone. Empty vec = only "All" (no selector shown).
+    pub supported_scopes: Vec<Vec<RgbScope>>,
+    /// Whether this device supports fan direction (swap LR/TB).
+    #[serde(default)]
+    pub supports_direction: bool,
+    /// Whether this device supports merge-lighting (cross-zone synchronized animation).
+    #[serde(default)]
+    pub supports_merge_lighting: bool,
+    /// The LEDs are driven over RF by a bound wireless device; writes to this
+    /// entry are skipped. Hidden by the GUI and the OpenRGB server.
+    #[serde(default)]
+    pub rf_owned: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbEffectParameters {
+    pub mode: RgbMode,
+    pub min_colors: u8,
+    pub max_colors: u8,
+    pub per_fan_colors: bool,
+    pub directions: Vec<RgbDirection>,
+    pub supports_speed: bool,
+}
+
+impl RgbEffectParameters {
+    pub fn validate_values(
+        &self,
+        speed: u32,
+        brightness: u32,
+        colors: usize,
+        fans: usize,
+    ) -> Result<(), &'static str> {
+        if speed > 4 || brightness > 4 {
+            return Err("RGB speed or brightness out of range");
+        }
+        let valid_colors = if self.per_fan_colors {
+            colors == fans
+        } else {
+            (self.min_colors as usize..=self.max_colors as usize).contains(&colors)
+        };
+        if !valid_colors {
+            return Err("Invalid RGB color count");
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RgbRegionParameters {
+    pub scope: RgbScope,
+    pub effects: Vec<RgbEffectParameters>,
+}
+
+impl RgbDeviceCapabilities {
+    pub fn supports_openrgb_regions(&self) -> bool {
+        use crate::device_id::{UsbId, AL_V2_MAX_FANS_PER_GROUP, AL_V2_USB_ID};
+        // Other families need their group delivery semantics verified first.
+        UsbId::from_hid_device_id(&self.device_id) == Some(AL_V2_USB_ID)
+            && self.hardware_group_effects
+            && !self.supports_direct
+            && self.zones.len() <= AL_V2_MAX_FANS_PER_GROUP
+            && [RgbScope::Inner, RgbScope::Outer].iter().all(|scope| {
+                self.region_parameters
+                    .iter()
+                    .any(|region| region.scope == *scope)
+            })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RgbSyncKind {
+    #[default]
+    Continuous,
+    Matched,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct MergeLightingConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub kind: RgbSyncKind,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effect_memory: Vec<RgbEffect>,
+    pub device_order: Vec<String>,
+    #[serde(default)]
+    pub directions: Vec<RgbDirection>,
+    pub effect: RgbEffect,
+    #[serde(default)]
+    pub disabled_devices: Vec<String>,
+}
+
+pub const MAX_RGB_EFFECT_MEMORY_ENTRIES: usize = 2048;
+pub const MAX_RGB_EFFECT_MEMORY_COLORS: usize = 64;
+
+pub fn validate_effect_memory(config: &RgbAppConfig) -> Result<(), String> {
+    for device in &config.devices {
+        if device.effect_memory.len() > MAX_RGB_EFFECT_MEMORY_ENTRIES {
+            return Err(format!(
+                "RGB device '{}' effect memory exceeds {MAX_RGB_EFFECT_MEMORY_ENTRIES} entries",
+                device.device_id
+            ));
+        }
+        let mut keys = std::collections::HashSet::with_capacity(device.effect_memory.len());
+        for (index, entry) in device.effect_memory.iter().enumerate() {
+            validate_remembered_effect(&entry.effect).map_err(|error| {
+                format!(
+                    "RGB device '{}' effect_memory[{index}] {error}",
+                    device.device_id
+                )
+            })?;
+            if !keys.insert((entry.zone, entry.effect.scope, entry.effect.mode)) {
+                return Err(format!(
+                    "RGB device '{}' has duplicate effect memory for zone {:?}, scope {:?}, mode {:?}",
+                    device.device_id, entry.zone, entry.effect.scope, entry.effect.mode
+                ));
+            }
+        }
+    }
+
+    if let Some(merge) = &config.merge_lighting {
+        if merge.effect_memory.len() > MAX_RGB_EFFECT_MEMORY_ENTRIES {
+            return Err(format!(
+                "merge lighting effect memory exceeds {MAX_RGB_EFFECT_MEMORY_ENTRIES} entries"
+            ));
+        }
+        let mut modes = std::collections::HashSet::with_capacity(merge.effect_memory.len());
+        for (index, effect) in merge.effect_memory.iter().enumerate() {
+            validate_remembered_effect(effect)
+                .map_err(|error| format!("merge lighting effect_memory[{index}] {error}"))?;
+            if !modes.insert(effect.mode) {
+                return Err(format!(
+                    "merge lighting has duplicate effect memory for mode {:?}",
+                    effect.mode
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_remembered_effect(effect: &RgbEffect) -> Result<(), String> {
+    if effect.colors.len() > MAX_RGB_EFFECT_MEMORY_COLORS {
+        return Err(format!(
+            "has more than {MAX_RGB_EFFECT_MEMORY_COLORS} colors"
+        ));
+    }
+    if effect.speed > 4 {
+        return Err("has speed outside 0..=4".to_owned());
+    }
+    if effect.brightness > 4 && !is_brightness_off(effect.brightness) {
+        return Err("has brightness outside 0..=4 or the off sentinel".to_owned());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legacy_configs_and_presets_do_not_invent_regional_settings() {
+        let config: RgbDeviceConfig = serde_json::from_value(serde_json::json!({
+            "device_id": "tl", "zones": []
+        }))
+        .unwrap();
+        assert!(config.regions.is_none());
+        assert!(config.effect_memory.is_empty());
+        let preset: RgbPreset = serde_json::from_value(serde_json::json!({
+            "name": "old", "device_id": "tl", "zones": []
+        }))
+        .unwrap();
+        assert!(preset.regions.is_none());
+        let encoded = serde_json::to_value(config).unwrap();
+        assert!(encoded.get("regions").is_none());
+        assert!(encoded.get("effect_memory").is_none());
+    }
+
+    #[test]
+    fn ene_dram_addresses_persist_as_independent_rgb_devices() {
+        let config: RgbAppConfig = serde_json::from_value(serde_json::json!({
+            "devices": [
+                {"device_id": "ene-dram-0000-00-1f-4-71", "zones": [{"zone_index": 0, "effect": {"mode": "Static", "colors": [[255, 16, 0]]}}]},
+                {"device_id": "ene-dram-0000-00-1f-4-73", "zones": [{"zone_index": 0, "effect": {"mode": "Static", "colors": [[0, 32, 255]]}}]}
+            ]
+        }))
+        .unwrap();
+
+        let stored = serde_json::to_string(&config).unwrap();
+        let restored: RgbAppConfig = serde_json::from_str(&stored).unwrap();
+        assert_eq!(restored, config);
+        assert_eq!(restored.devices[0].device_id, "ene-dram-0000-00-1f-4-71");
+        assert_eq!(restored.devices[1].device_id, "ene-dram-0000-00-1f-4-73");
+        assert_ne!(restored.devices[0].zones, restored.devices[1].zones);
+    }
+
+    #[test]
+    fn effect_memory_round_trips_and_validation_rejects_ambiguous_or_unsafe_entries() {
+        let mut config: RgbAppConfig = serde_json::from_value(serde_json::json!({
+            "devices": [{
+                "device_id": "tl",
+                "zones": [],
+                "effect_memory": [{
+                    "effect": { "mode": "Static", "colors": [[1, 2, 3]], "brightness": 255 },
+                    "flip": true
+                }]
+            }],
+            "merge_lighting": {
+                "enabled": false,
+                "kind": "Matched",
+                "effect_memory": [{ "mode": "Breathing", "speed": 4 }],
+                "device_order": [],
+                "effect": { "mode": "Static" }
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(config.devices[0].effect_memory[0].zone, None);
+        assert!(config.devices[0].effect_memory[0].flip);
+        assert_eq!(
+            config.devices[0].effect_memory[0].effect.colors,
+            [[1, 2, 3]]
+        );
+        assert!(validate_effect_memory(&config).is_ok());
+        let encoded = serde_json::to_value(&config).unwrap();
+        assert_eq!(encoded["devices"][0]["effect_memory"][0]["flip"], true);
+
+        let duplicate = config.devices[0].effect_memory[0].clone();
+        config.devices[0].effect_memory.push(duplicate);
+        assert!(validate_effect_memory(&config)
+            .unwrap_err()
+            .contains("duplicate effect memory"));
+
+        config.devices[0].effect_memory.pop();
+        config.devices[0].effect_memory[0].effect.colors =
+            vec![[0, 0, 0]; MAX_RGB_EFFECT_MEMORY_COLORS + 1];
+        assert!(validate_effect_memory(&config)
+            .unwrap_err()
+            .contains("more than 64 colors"));
+
+        config.devices[0].effect_memory[0].effect.colors.clear();
+        config.devices[0].effect_memory[0].effect.speed = 5;
+        assert!(validate_effect_memory(&config)
+            .unwrap_err()
+            .contains("speed outside 0..=4"));
+    }
+
+    #[test]
+    fn older_capabilities_default_to_no_software_modes() {
+        let caps: RgbDeviceCapabilities = serde_json::from_value(serde_json::json!({
+            "device_id": "legacy", "device_name": "Legacy", "supported_modes": ["Static"],
+            "zones": [], "supports_direct": true, "supports_mb_rgb_sync": false,
+            "total_led_count": 0, "supported_scopes": []
+        }))
+        .unwrap();
+        assert!(caps.software_modes.is_empty());
+    }
+
+    const ALL_MODES: &[RgbMode] = &[
+        RgbMode::Off,
+        RgbMode::Direct,
+        RgbMode::Static,
+        RgbMode::Rainbow,
+        RgbMode::RainbowMorph,
+        RgbMode::Breathing,
+        RgbMode::Runway,
+        RgbMode::Meteor,
+        RgbMode::ColorCycle,
+        RgbMode::Staggered,
+        RgbMode::Tide,
+        RgbMode::Mixing,
+        RgbMode::Voice,
+        RgbMode::Door,
+        RgbMode::Render,
+        RgbMode::Ripple,
+        RgbMode::Reflect,
+        RgbMode::TailChasing,
+        RgbMode::Paint,
+        RgbMode::PingPong,
+        RgbMode::Stack,
+        RgbMode::StackMulti,
+        RgbMode::Neon,
+        RgbMode::CoverCycle,
+        RgbMode::Wave,
+        RgbMode::Racing,
+        RgbMode::Lottery,
+        RgbMode::Intertwine,
+        RgbMode::MeteorShower,
+        RgbMode::Collide,
+        RgbMode::ElectricCurrent,
+        RgbMode::Kaleidoscope,
+        RgbMode::BigBang,
+        RgbMode::Vortex,
+        RgbMode::Pump,
+        RgbMode::ColorsMorph,
+        RgbMode::TaiChi,
+        RgbMode::CrossingOver,
+        RgbMode::ColorfulStarryNight,
+        RgbMode::StaticStarryNight,
+        RgbMode::Bounce,
+        RgbMode::TickerTape,
+        RgbMode::Fluctuation,
+        RgbMode::Transmit,
+        RgbMode::Burst,
+        RgbMode::MopUp,
+        RgbMode::PacMan,
+        RgbMode::MeteorRainbow,
+        RgbMode::Spring,
+        RgbMode::Scan,
+        RgbMode::Contest,
+        RgbMode::Warning,
+        RgbMode::SpanningTeacups,
+        RgbMode::Tornado,
+        RgbMode::DoubleMeteor,
+        RgbMode::MeteorContest,
+        RgbMode::MeteorMix,
+        RgbMode::ReturnArc,
+        RgbMode::DoubleArc,
+        RgbMode::HeartBeat,
+        RgbMode::HeartBeatRunway,
+        RgbMode::Disco,
+        RgbMode::SeaFlow,
+        RgbMode::Echo,
+        RgbMode::ColorfulCity,
+        RgbMode::Twinkle,
+        RgbMode::Groove,
+        RgbMode::Tunnel,
+        RgbMode::BreathingRainbow,
+        RgbMode::Snooker,
+        RgbMode::BlowUp,
+        RgbMode::ShockWave,
+        RgbMode::BulletStack,
+        RgbMode::Drizzling,
+        RgbMode::FadeOut,
+        RgbMode::ColorTransfer,
+        RgbMode::CrossOver,
+        RgbMode::Parallel,
+        RgbMode::Endless,
+        RgbMode::River,
+        RgbMode::Duel,
+        RgbMode::Hourglass,
+        RgbMode::Pioneer,
+        RgbMode::ShuttleRun,
+        RgbMode::GradientRibbon,
+        RgbMode::RainbowWave,
+        RgbMode::ColorfulMeteor,
+        RgbMode::Wing,
+        RgbMode::Drumming,
+        RgbMode::Boomerang,
+        RgbMode::CandyBox,
+        RgbMode::Transformation,
+    ];
+
+    #[test]
+    fn display_name_round_trip() {
+        // Off is intentionally not in `from_display_name` (it's a sentinel);
+        // every other mode must round-trip.
+        for &mode in ALL_MODES {
+            if mode == RgbMode::Off {
+                assert_eq!(RgbMode::from_display_name(mode.display_name()), None);
+                continue;
+            }
+            let parsed = RgbMode::from_display_name(mode.display_name())
+                .unwrap_or_else(|| panic!("failed to parse display name {:?}", mode));
+            assert_eq!(parsed, mode);
+        }
+    }
+
+    #[test]
+    fn from_display_name_rejects_unknown() {
+        assert_eq!(RgbMode::from_display_name(""), None);
+        assert_eq!(RgbMode::from_display_name("Off"), None);
+        assert_eq!(RgbMode::from_display_name("not a real mode"), None);
+    }
+
+    #[test]
+    fn tl_mode_byte_round_trip() {
+        for &mode in ALL_MODES {
+            let Some(byte) = mode.to_tl_mode_byte() else {
+                continue;
+            };
+            let back = RgbMode::from_tl_mode_byte(byte).expect("inverse missing");
+            assert_eq!(back, mode, "tl mode byte round trip failed for {:?}", mode);
+        }
+    }
+
+    #[test]
+    fn galahad2_mode_byte_round_trip() {
+        for &mode in ALL_MODES {
+            let Some(byte) = mode.to_galahad2_mode_byte() else {
+                continue;
+            };
+            let back = RgbMode::from_galahad2_mode_byte(byte).expect("inverse missing");
+            assert_eq!(back, mode, "galahad2 byte round trip failed for {:?}", mode);
+        }
+    }
+
+    #[test]
+    fn hydroshift_lcd_mode_byte_round_trip() {
+        for &mode in ALL_MODES {
+            let Some(byte) = mode.to_hydroshift_lcd_mode_byte() else {
+                continue;
+            };
+            let back = RgbMode::from_hydroshift_lcd_mode_byte(byte).expect("inverse missing");
+            assert_eq!(
+                back, mode,
+                "hydroshift byte round trip failed for {:?}",
+                mode
+            );
+        }
+    }
+
+    #[test]
+    fn family_dispatcher_matches_direct_calls() {
+        let families = [
+            (DeviceFamily::TlFan, "tl"),
+            (DeviceFamily::SlInf, "slinf"),
+            (DeviceFamily::Clv1, "clv1"),
+            (DeviceFamily::Galahad2Trinity, "galahad2"),
+            (DeviceFamily::HydroShiftLcd, "hydroshift"),
+            (DeviceFamily::Galahad2Lcd, "galahad2lcd"),
+            (DeviceFamily::WirelessAio, "w aio"),
+        ];
+        for &(family, _) in &families {
+            for &mode in ALL_MODES {
+                let dispatched = mode.mode_byte_for(family);
+                let direct = match family {
+                    DeviceFamily::TlFan | DeviceFamily::SlInf | DeviceFamily::Clv1 => {
+                        mode.to_tl_mode_byte()
+                    }
+                    DeviceFamily::Galahad2Trinity => mode.to_galahad2_mode_byte(),
+                    DeviceFamily::HydroShiftLcd
+                    | DeviceFamily::Galahad2Lcd
+                    | DeviceFamily::WirelessAio => mode.to_hydroshift_lcd_mode_byte(),
+                    _ => None,
+                };
+                assert_eq!(
+                    dispatched, direct,
+                    "dispatcher mismatch for {:?} / {:?}",
+                    family, mode
+                );
+
+                if let Some(byte) = dispatched {
+                    let back = RgbMode::from_mode_byte_for(family, byte).unwrap();
+                    assert_eq!(back, mode);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn family_dispatcher_returns_none_for_unsupported_families() {
+        // LCD-only / RGB-only families have no mode byte table.
+        // Ene6k77 uses per-variant tables in the driver, not the shared dispatcher.
+        for family in [
+            DeviceFamily::TlLcd,
+            DeviceFamily::UniversalScreenLighting,
+            DeviceFamily::StrimerPlus,
+            DeviceFamily::WirelessTx,
+            DeviceFamily::Ene6k77,
+        ] {
+            assert_eq!(RgbMode::Static.mode_byte_for(family), None);
+            assert_eq!(RgbMode::from_mode_byte_for(family, 1), None);
+        }
+    }
+}

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Prism Linux Control Center desktop session capture
+Comment=Connect the active desktop to the selected Prism hardware daemon
+Exec=systemctl --user start --no-block lianli-session.service
+TryExec=systemctl
+Terminal=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

@@ -1,0 +1,11 @@
+/target/
+/.vscode/
+/tmp/
+node_modules/
+dist/
+*.swp
+*.swo
+*~
+.DS_Store
+.idea
+.cache

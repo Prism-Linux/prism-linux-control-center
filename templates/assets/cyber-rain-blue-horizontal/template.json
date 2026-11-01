@@ -1,0 +1,990 @@
+{
+  "id": "cyber-rain-blue-horizontal",
+  "name": "Cyber Rain / Blue",
+  "base_width": 1920,
+  "base_height": 480,
+  "rotated": true,
+  "target_device": "Universal Screen 8.8\" (480×1920)",
+  "background": {
+    "type": "image",
+    "path": "rain-city.jpg"
+  },
+  "widgets": [
+    {
+      "id": "instrument panels",
+      "x": 960,
+      "y": 240,
+      "width": 1920,
+      "height": 480,
+      "kind": {
+        "type": "image",
+        "path": "panels.png",
+        "opacity": 1,
+        "fit": "contain"
+      }
+    },
+    {
+      "id": "RAM capacity",
+      "x": 537.5,
+      "y": 50,
+      "width": 115,
+      "height": 56,
+      "update_interval_ms": 10000,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "command",
+          "cmd": "LC_ALL=C awk '/^MemTotal:/ {printf \"%.0f\", $2/1048576}' /proc/meminfo"
+        },
+        "format": "{:.0}",
+        "unit": " GiB",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 41,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "center",
+        "value_min": 0,
+        "value_max": 1024,
+        "ranges": []
+      }
+    },
+    {
+      "id": "title",
+      "x": 195,
+      "y": 50,
+      "width": 310,
+      "height": 56,
+      "kind": {
+        "type": "label",
+        "text": "CYBER // RAIN",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 50,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "center"
+      }
+    },
+    {
+      "id": "RAM label",
+      "x": 430,
+      "y": 50,
+      "width": 80,
+      "height": 56,
+      "kind": {
+        "type": "label",
+        "text": "RAM",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 44,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "center"
+      }
+    },
+    {
+      "id": "ram usage",
+      "x": 662.5,
+      "y": 50,
+      "width": 115,
+      "height": 56,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "mem_usage"
+        },
+        "format": "{:.0}",
+        "unit": "%",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 44,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "center",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "sensor_category": "mem_usage"
+    },
+    {
+      "id": "disk label",
+      "x": 812.5,
+      "y": 50,
+      "width": 105,
+      "height": 56,
+      "kind": {
+        "type": "label",
+        "text": "FREE",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 44,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "center"
+      }
+    },
+    {
+      "id": "disk free",
+      "x": 990,
+      "y": 50,
+      "width": 260,
+      "height": 56,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "command",
+          "cmd": "LC_ALL=C df -B1 --output=avail -- \"$HOME\" | awk 'NR==2 {printf \"%.1f\", $1/1073741824}'"
+        },
+        "format": "{:.1}",
+        "unit": " GiB",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 44,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "center",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "update_interval_ms": 10000
+    },
+    {
+      "id": "SSD label",
+      "x": 1205,
+      "y": 50,
+      "width": 90,
+      "height": 56,
+      "kind": {
+        "type": "label",
+        "text": "SSD",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 44,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "center"
+      }
+    },
+    {
+      "id": "SSD temperature",
+      "x": 1322.5,
+      "y": 50,
+      "width": 145,
+      "height": 56,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "hwmon",
+          "name": "nvme",
+          "label": "Composite",
+          "device_path": ""
+        },
+        "format": "{:.0}",
+        "unit": "°C",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 44,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "center",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "update_interval_ms": 5000
+    },
+    {
+      "id": "clock",
+      "x": 1645,
+      "y": 50,
+      "width": 420,
+      "height": 56,
+      "kind": {
+        "type": "clock_digital",
+        "format": "%H:%M:%S",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 52,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "center"
+      }
+    },
+    {
+      "id": "CPU label",
+      "x": 269,
+      "y": 138.5,
+      "width": 430,
+      "height": 55,
+      "kind": {
+        "type": "label",
+        "text": "CPU // CORE",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 46,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "CPU temp label",
+      "x": 187,
+      "y": 209,
+      "width": 250,
+      "height": 46,
+      "kind": {
+        "type": "label",
+        "text": "TEMP",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 40,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "CPU temperature",
+      "x": 210,
+      "y": 289.5,
+      "width": 300,
+      "height": 105,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "format": "{:.0}",
+        "unit": "°C",
+        "font": {
+          "path": "JetBrainsMono-Bold.ttf"
+        },
+        "font_size": 99,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "sensor_category": "cpu_temp"
+    },
+    {
+      "id": "CPU load gauge",
+      "x": 485,
+      "y": 314,
+      "width": 280,
+      "height": 280,
+      "kind": {
+        "type": "speedometer",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "value_min": 0,
+        "value_max": 100,
+        "start_angle": 135,
+        "sweep_angle": 270,
+        "needle_color": [
+          156,
+          247,
+          255,
+          255
+        ],
+        "tick_color": [
+          186,
+          224,
+          250,
+          255
+        ],
+        "tick_count": 10,
+        "background_color": [
+          21,
+          58,
+          94,
+          220
+        ],
+        "ranges": [
+          {
+            "max": null,
+            "color": [
+              35,
+              163,
+              255
+            ],
+            "alpha": 255
+          }
+        ],
+        "show_gauge": true,
+        "show_needle": true,
+        "needle_width": 7,
+        "needle_length_pct": 0.84,
+        "needle_border_color": [
+          7,
+          32,
+          62,
+          255
+        ],
+        "needle_border_width": 1.5
+      },
+      "sensor_category": "cpu_usage"
+    },
+    {
+      "id": "CPU load label",
+      "x": 135,
+      "y": 378,
+      "width": 140,
+      "height": 48,
+      "kind": {
+        "type": "label",
+        "text": "LOAD",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 43,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "CPU load",
+      "x": 270,
+      "y": 380,
+      "width": 130,
+      "height": 62,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "format": "{:.0}",
+        "unit": "%",
+        "font": {
+          "path": "JetBrainsMono-Bold.ttf"
+        },
+        "font_size": 49,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "sensor_category": "cpu_usage"
+    },
+    {
+      "id": "CPU min",
+      "x": 373.5,
+      "y": 413,
+      "width": 45,
+      "height": 34,
+      "kind": {
+        "type": "label",
+        "text": "0",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 30,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "CPU max",
+      "x": 613,
+      "y": 413,
+      "width": 66,
+      "height": 34,
+      "kind": {
+        "type": "label",
+        "text": "100",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 30,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "GPU label",
+      "x": 914,
+      "y": 138.5,
+      "width": 430,
+      "height": 55,
+      "kind": {
+        "type": "label",
+        "text": "GPU // CORE",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 46,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "GPU temp label",
+      "x": 832,
+      "y": 209,
+      "width": 250,
+      "height": 46,
+      "kind": {
+        "type": "label",
+        "text": "TEMP",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 40,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "GPU temperature",
+      "x": 855,
+      "y": 289.5,
+      "width": 300,
+      "height": 105,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "format": "{:.0}",
+        "unit": "°C",
+        "font": {
+          "path": "JetBrainsMono-Bold.ttf"
+        },
+        "font_size": 99,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "sensor_category": "gpu_temp"
+    },
+    {
+      "id": "GPU load gauge",
+      "x": 1130,
+      "y": 314,
+      "width": 280,
+      "height": 280,
+      "kind": {
+        "type": "speedometer",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "value_min": 0,
+        "value_max": 100,
+        "start_angle": 135,
+        "sweep_angle": 270,
+        "needle_color": [
+          156,
+          247,
+          255,
+          255
+        ],
+        "tick_color": [
+          186,
+          224,
+          250,
+          255
+        ],
+        "tick_count": 10,
+        "background_color": [
+          21,
+          58,
+          94,
+          220
+        ],
+        "ranges": [
+          {
+            "max": null,
+            "color": [
+              35,
+              163,
+              255
+            ],
+            "alpha": 255
+          }
+        ],
+        "show_gauge": true,
+        "show_needle": true,
+        "needle_width": 7,
+        "needle_length_pct": 0.84,
+        "needle_border_color": [
+          7,
+          32,
+          62,
+          255
+        ],
+        "needle_border_width": 1.5
+      },
+      "sensor_category": "gpu_usage"
+    },
+    {
+      "id": "GPU load label",
+      "x": 780,
+      "y": 378,
+      "width": 140,
+      "height": 48,
+      "kind": {
+        "type": "label",
+        "text": "LOAD",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 43,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "GPU load",
+      "x": 915,
+      "y": 380,
+      "width": 130,
+      "height": 62,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "cpu_usage"
+        },
+        "format": "{:.0}",
+        "unit": "%",
+        "font": {
+          "path": "JetBrainsMono-Bold.ttf"
+        },
+        "font_size": 49,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left",
+        "value_min": 0,
+        "value_max": 100,
+        "ranges": []
+      },
+      "sensor_category": "gpu_usage"
+    },
+    {
+      "id": "GPU min",
+      "x": 1018.5,
+      "y": 413,
+      "width": 45,
+      "height": 34,
+      "kind": {
+        "type": "label",
+        "text": "0",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 30,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "GPU max",
+      "x": 1258,
+      "y": 413,
+      "width": 66,
+      "height": 34,
+      "kind": {
+        "type": "label",
+        "text": "100",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 30,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "network label",
+      "x": 1599,
+      "y": 138.5,
+      "width": 510,
+      "height": 55,
+      "kind": {
+        "type": "label",
+        "text": "NETWORK // TRAFFIC",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 46,
+        "color": [
+          6,
+          26,
+          54,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "DOWNLOAD label",
+      "x": 1470,
+      "y": 192,
+      "width": 220,
+      "height": 44,
+      "kind": {
+        "type": "label",
+        "text": "DOWNLOAD",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 38,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "DOWNLOAD gauge",
+      "x": 1468,
+      "y": 308,
+      "width": 184,
+      "height": 184,
+      "kind": {
+        "type": "speedometer",
+        "source": {
+          "type": "network_rx",
+          "iface": "eth0"
+        },
+        "value_min": 0,
+        "value_max": 125,
+        "start_angle": 135,
+        "sweep_angle": 270,
+        "needle_color": [
+          156,
+          247,
+          255,
+          255
+        ],
+        "tick_color": [
+          186,
+          224,
+          250,
+          255
+        ],
+        "tick_count": 10,
+        "background_color": [
+          21,
+          58,
+          94,
+          220
+        ],
+        "ranges": [
+          {
+            "max": null,
+            "color": [
+              35,
+              163,
+              255
+            ],
+            "alpha": 255
+          }
+        ],
+        "show_gauge": true,
+        "show_needle": true,
+        "needle_width": 7,
+        "needle_length_pct": 0.84,
+        "needle_border_color": [
+          7,
+          32,
+          62,
+          255
+        ],
+        "needle_border_width": 1.5
+      },
+      "sensor_category": "network_rx"
+    },
+    {
+      "id": "DOWNLOAD speed",
+      "x": 1477.5,
+      "y": 415.5,
+      "width": 245,
+      "height": 63,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "network_rx",
+          "iface": "eth0"
+        },
+        "format": "{:.1}",
+        "unit": "",
+        "font": {
+          "path": "JetBrainsMono-Bold.ttf"
+        },
+        "font_size": 47,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "center",
+        "value_min": 0,
+        "value_max": 125,
+        "ranges": []
+      },
+      "sensor_category": "network_rx"
+    },
+    {
+      "id": "UPLOAD label",
+      "x": 1730,
+      "y": 192,
+      "width": 220,
+      "height": 44,
+      "kind": {
+        "type": "label",
+        "text": "UPLOAD",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 38,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left"
+      }
+    },
+    {
+      "id": "UPLOAD gauge",
+      "x": 1728,
+      "y": 308,
+      "width": 184,
+      "height": 184,
+      "kind": {
+        "type": "speedometer",
+        "source": {
+          "type": "network_tx",
+          "iface": "eth0"
+        },
+        "value_min": 0,
+        "value_max": 125,
+        "start_angle": 135,
+        "sweep_angle": 270,
+        "needle_color": [
+          156,
+          247,
+          255,
+          255
+        ],
+        "tick_color": [
+          186,
+          224,
+          250,
+          255
+        ],
+        "tick_count": 10,
+        "background_color": [
+          21,
+          58,
+          94,
+          220
+        ],
+        "ranges": [
+          {
+            "max": null,
+            "color": [
+              35,
+              163,
+              255
+            ],
+            "alpha": 255
+          }
+        ],
+        "show_gauge": true,
+        "show_needle": true,
+        "needle_width": 7,
+        "needle_length_pct": 0.84,
+        "needle_border_color": [
+          7,
+          32,
+          62,
+          255
+        ],
+        "needle_border_width": 1.5
+      },
+      "sensor_category": "network_tx"
+    },
+    {
+      "id": "UPLOAD speed",
+      "x": 1737.5,
+      "y": 415.5,
+      "width": 245,
+      "height": 63,
+      "kind": {
+        "type": "value_text",
+        "source": {
+          "type": "network_tx",
+          "iface": "eth0"
+        },
+        "format": "{:.1}",
+        "unit": "",
+        "font": {
+          "path": "JetBrainsMono-Bold.ttf"
+        },
+        "font_size": 47,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "center",
+        "value_min": 0,
+        "value_max": 125,
+        "ranges": []
+      },
+      "sensor_category": "network_tx"
+    },
+    {
+      "id": "network units",
+      "x": 1655,
+      "y": 464.5,
+      "width": 370,
+      "height": 31,
+      "kind": {
+        "type": "label",
+        "text": "MB/s   //   0–125",
+        "font": {
+          "path": "Rajdhani-SemiBold.ttf"
+        },
+        "font_size": 29,
+        "color": [
+          215,
+          241,
+          255,
+          255
+        ],
+        "align": "left"
+      }
+    }
+  ]
+}

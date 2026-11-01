@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible application problem.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues first. Do not include passwords, tokens, private keys, serial numbers, personal paths, or unredacted diagnostic archives.
+  - type: input
+    id: version
+    attributes:
+      label: Application version
+      placeholder: 1.3.0-beta.1
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Distribution and kernel
+      placeholder: Distribution/version; kernel version
+    validations:
+      required: true
+  - type: textarea
+    id: device
+    attributes:
+      label: Affected device and connection
+      description: Include model/revision and USB or PCI identifiers only when relevant. Redact serial numbers.
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: Numbered steps, including relevant service mode or media mode.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant redacted logs
+      description: Include only the relevant excerpt. Remove usernames, paths, serial numbers, tokens, and unrelated device details.

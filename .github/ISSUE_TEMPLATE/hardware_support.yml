@@ -1,0 +1,49 @@
+name: Hardware support report
+description: Request or report support for a specific hardware model or feature.
+title: "[Hardware]: "
+labels: [hardware-support]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Support is model, revision, and connection specific. Do not attach private protocol captures, Windows driver files, passwords, or unredacted logs.
+  - type: input
+    id: model
+    attributes:
+      label: Exact model and revision
+    validations:
+      required: true
+  - type: input
+    id: identity
+    attributes:
+      label: USB or PCI identity, if known
+      description: Leave serial numbers out.
+  - type: input
+    id: connection
+    attributes:
+      label: Connection mode
+      placeholder: USB, wireless receiver, motherboard header, or other
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Distribution, kernel, and application version
+    validations:
+      required: true
+  - type: textarea
+    id: feature
+    attributes:
+      label: Feature and expected physical behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What you verified
+      description: Separate observed device behavior from enumeration, command acceptance, or successful USB transfer.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant redacted logs
+      description: Remove usernames, personal paths, serials, tokens, and unrelated hardware details.

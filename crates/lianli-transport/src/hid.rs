@@ -1,0 +1,666 @@
+//! HID-over-USB transport implemented directly on `rusb` (libusb).
+//!
+//! This replaces both the old `hidapi` backend and the `HidBackend` wrapper.
+//! All HID I/O now goes through a single type: [`RusbHid`].
+//!
+//! The reopen-on-failure logic that used to live in `HidBackend` is folded
+//! directly into `RusbHid`. Callers that want self-healing construct with
+//! [`RusbHid::with_reopener`]; callers that don't (e.g. short-lived probes)
+//! just use [`RusbHid::open_by_usage`].
+
+use crate::error::TransportError;
+use crate::hid_trait::HidTransport;
+use crate::UsbContext;
+use rusb::{Device, DeviceHandle};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tracing::{debug, info, warn};
+
+/// Closure that produces a fresh [`RusbHid`] after a stale-handle event
+/// (USB suspend/resume, hub reset, transient unplug).
+///
+/// Wired in at construction so the transport can self-heal without each
+/// controller having to plumb its own retry logic.
+pub type RusbHidReopener = Arc<dyn Fn() -> anyhow::Result<RusbHid> + Send + Sync>;
+
+/// HID transport speaking HID-over-libusb (control transfers for feature /
+/// input / output reports, plus interrupt transfers for fast IN/OUT streams).
+///
+/// Holds the underlying `rusb::DeviceHandle` and the claimed interface number.
+/// On `Drop`, all claimed interfaces are released and the kernel driver is
+/// reattached.
+pub struct RusbHid {
+    handle: DeviceHandle<UsbContext>,
+    iface: u8,
+    /// All HID interfaces we hold for the lifetime of this transport, so the
+    /// kernel can't re-bind hidraw and reject our writes.
+    claimed: Vec<u8>,
+    interfaces_claimed: bool,
+    ep_in: u8,
+    ep_out: Option<u8>,
+    reopener: Option<RusbHidReopener>,
+    reopen_count: std::sync::atomic::AtomicU64,
+    reopen_gate: ReopenGate,
+}
+
+#[derive(Default)]
+struct ReopenGate {
+    next_attempt: Option<Instant>,
+}
+
+impl ReopenGate {
+    fn begin(&mut self, now: Instant) -> bool {
+        if self.next_attempt.is_some_and(|next| now < next) {
+            return false;
+        }
+        self.next_attempt = Some(now + Duration::from_secs(5));
+        true
+    }
+}
+
+fn needs_reopen(error: &TransportError) -> bool {
+    matches!(
+        error,
+        TransportError::Usb(
+            rusb::Error::NoDevice | rusb::Error::Io | rusb::Error::Pipe | rusb::Error::Interrupted
+        )
+    )
+}
+
+impl RusbHid {
+    /// Open a HID interface, discovering it by usage page on the same handle.
+    ///
+    /// This combines interface discovery and opening into a single call that
+    /// reuses one USB handle. Some devices (e.g. TL Fan) stop responding if
+    /// the handle used for descriptor reads is dropped before a new handle
+    /// claims the interface.
+    pub fn open_by_usage(
+        device: Device<UsbContext>,
+        usage_page: Option<u16>,
+    ) -> Result<Self, TransportError> {
+        Self::open_by_usage_impl(device, usage_page, None)
+    }
+
+    /// Like [`open_by_usage`](Self::open_by_usage) but with a reopener closure
+    /// for self-healing on I/O failure.
+    pub fn open_by_usage_with_reopener(
+        device: Device<UsbContext>,
+        usage_page: Option<u16>,
+        reopener: RusbHidReopener,
+    ) -> Result<Self, TransportError> {
+        Self::open_by_usage_impl(device, usage_page, Some(reopener))
+    }
+
+    fn open_by_usage_impl(
+        device: Device<UsbContext>,
+        usage_page: Option<u16>,
+        reopener: Option<RusbHidReopener>,
+    ) -> Result<Self, TransportError> {
+        let handle = device.open()?;
+        let config = device.active_config_descriptor()?;
+
+        // Collect HID interfaces
+        let mut hid_ifaces: Vec<u8> = Vec::new();
+        for iface in config.interfaces() {
+            for desc in iface.descriptors() {
+                if desc.class_code() == 0x03 {
+                    hid_ifaces.push(desc.interface_number());
+                }
+            }
+        }
+
+        if hid_ifaces.is_empty() {
+            return Err(TransportError::Other("No HID interfaces found".into()));
+        }
+
+        let mut claimed: Vec<u8> = Vec::new();
+        for &iface_num in &hid_ifaces {
+            match detach_and_claim_interface(&handle, iface_num) {
+                Ok(()) => claimed.push(iface_num),
+                Err(e) => warn!("RusbHid: claim interface {iface_num} failed: {e}"),
+            }
+        }
+
+        if claimed.is_empty() {
+            return Err(TransportError::Other(
+                "RusbHid: could not claim any HID interface".into(),
+            ));
+        }
+
+        let target_iface = if let Some(required_page) = usage_page {
+            let mut matched = None;
+            for &iface_num in &claimed {
+                let mut buf = [0u8; 256];
+                let result = handle.read_control(
+                    0x81,
+                    0x06,
+                    (0x22u16) << 8,
+                    iface_num as u16,
+                    &mut buf,
+                    Duration::from_millis(250),
+                );
+                if let Ok(n) = result {
+                    if let Some(page) = parse_usage_page(&buf[..n]) {
+                        if page == required_page {
+                            debug!(
+                                "RusbHid: interface {iface_num} matches usage page {required_page:#06x}"
+                            );
+                            matched = Some(iface_num);
+                            break;
+                        }
+                    }
+                }
+            }
+            matched.unwrap_or_else(|| {
+                debug!(
+                    "RusbHid: no interface matched usage page {required_page:#06x}, using first claimed"
+                );
+                claimed[0]
+            })
+        } else {
+            claimed[0]
+        };
+
+        claimed.retain(|&iface_num| {
+            if iface_num == target_iface {
+                true
+            } else {
+                let _ = handle.release_interface(iface_num);
+                let _ = handle.attach_kernel_driver(iface_num);
+                false
+            }
+        });
+
+        let mut ins: Vec<u8> = Vec::new();
+        let mut outs: Vec<u8> = Vec::new();
+        for iface_group in config.interfaces() {
+            for desc in iface_group.descriptors() {
+                if desc.interface_number() != target_iface {
+                    continue;
+                }
+                for ep in desc.endpoint_descriptors() {
+                    if ep.transfer_type() != rusb::TransferType::Interrupt {
+                        continue;
+                    }
+                    match ep.direction() {
+                        rusb::Direction::In => ins.push(ep.address()),
+                        rusb::Direction::Out => outs.push(ep.address()),
+                    }
+                }
+            }
+        }
+        if ins.len() > 1 {
+            warn!(
+                "RusbHid: interface {target_iface} has multiple interrupt IN endpoints {ins:02x?}, using first"
+            );
+        }
+        if outs.len() > 1 {
+            warn!(
+                "RusbHid: interface {target_iface} has multiple interrupt OUT endpoints {outs:02x?}, using first"
+            );
+        }
+        let ep_in = ins.first().copied();
+        let ep_out = outs.first().copied();
+
+        let ep_in = ep_in.ok_or_else(|| {
+            TransportError::Other("RusbHid: no interrupt IN endpoint found".into())
+        })?;
+
+        if let Some(ep_out) = ep_out {
+            debug!("RusbHid: interface={target_iface} ep_in=0x{ep_in:02x} ep_out=0x{ep_out:02x}");
+        } else {
+            debug!("RusbHid: interface={target_iface} ep_in=0x{ep_in:02x} (using SET_REPORT for writes)");
+        }
+
+        Ok(Self {
+            handle,
+            iface: target_iface,
+            claimed,
+            interfaces_claimed: true,
+            ep_in,
+            ep_out,
+            reopener,
+            reopen_count: std::sync::atomic::AtomicU64::new(0),
+            reopen_gate: ReopenGate::default(),
+        })
+    }
+
+    /// Attach a reopener after construction. Less common than
+    /// [`open_by_usage_with_reopener`](Self::open_by_usage_with_reopener) —
+    /// used when the reopener needs the same `RusbHid` it's constructing.
+    pub fn set_reopener(&mut self, reopener: RusbHidReopener) {
+        self.reopener = Some(reopener);
+    }
+
+    /// Perform a USB port reset on the device (USBDEVFS_RESET ioctl).
+    /// Used during device binding/unbinding to force kernel re-enumeration.
+    pub fn reset_usb_device(device: &Device<UsbContext>) -> Result<(), TransportError> {
+        let handle = device.open()?;
+
+        let mut hid_ifaces: Vec<u8> = Vec::new();
+        if let Ok(config) = device.active_config_descriptor() {
+            for iface in config.interfaces() {
+                for desc in iface.descriptors() {
+                    if desc.class_code() == 0x03 {
+                        hid_ifaces.push(desc.interface_number());
+                    }
+                }
+            }
+        }
+
+        for &iface in &hid_ifaces {
+            if let Ok(true) = handle.kernel_driver_active(iface) {
+                let _ = handle.detach_kernel_driver(iface);
+            }
+        }
+
+        handle
+            .reset()
+            .map_err(|e| TransportError::Other(format!("USB device reset failed: {e}")))?;
+
+        for &iface in &hid_ifaces {
+            let _ = handle.attach_kernel_driver(iface);
+        }
+
+        Ok(())
+    }
+
+    fn try_reopen(&mut self) -> Result<(), TransportError> {
+        let reopener = self
+            .reopener
+            .clone()
+            .ok_or_else(|| TransportError::Other("no reopener configured".into()))?;
+        self.interfaces_claimed = false;
+        for &iface in self.claimed.iter().rev() {
+            match self.handle.release_interface(iface) {
+                Ok(()) | Err(rusb::Error::NotFound | rusb::Error::NoDevice) => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        let mut replacement =
+            reopener().map_err(|e| TransportError::Other(format!("reopen: {e}")))?;
+        replacement.reopener = Some(reopener);
+        replacement.reopen_gate.next_attempt = self.reopen_gate.next_attempt;
+        let count = self
+            .reopen_count
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        // The replacement owns the interface now; dropping the old handle
+        // must not reattach its kernel driver.
+        self.claimed.clear();
+        *self = replacement;
+        self.reopen_count
+            .store(count, std::sync::atomic::Ordering::SeqCst);
+        Ok(())
+    }
+
+    pub fn reopen_count(&self) -> u64 {
+        self.reopen_count.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    fn handle(&self) -> Result<&DeviceHandle<UsbContext>, TransportError> {
+        if !self.interfaces_claimed {
+            return Err(rusb::Error::NoDevice.into());
+        }
+        Ok(&self.handle)
+    }
+
+    fn with_reopen<T>(
+        &mut self,
+        mut op: impl FnMut(&Self) -> Result<T, TransportError>,
+        label: &str,
+    ) -> Result<T, TransportError> {
+        match op(self) {
+            Ok(v) => Ok(v),
+            Err(e) if self.reopener.is_some() && needs_reopen(&e) => {
+                // Failures are expected once shutdown starts, since new
+                // transfers are refused. Do not warn or attempt a reopen.
+                if crate::usb::shutting_down() {
+                    debug!("RusbHid {label} failed ({e}) while shutting down, not reopening");
+                    return Err(e);
+                }
+                if !self.reopen_gate.begin(Instant::now()) {
+                    return Err(e);
+                }
+                warn!("RusbHid {label} failed ({e}); attempting reopen");
+                self.try_reopen()?;
+                info!("RusbHid handle reopened, retrying {label}");
+                op(self)
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn send_feature_report(&mut self, data: &[u8]) -> Result<usize, TransportError> {
+        self.with_reopen(
+            |s| {
+                let report_id = data.first().copied().unwrap_or(0) as u16;
+                let w_value = (0x03u16 << 8) | report_id;
+                s.handle()?
+                    .write_control(
+                        0x21,
+                        0x09,
+                        w_value,
+                        s.iface as u16,
+                        data,
+                        Duration::from_millis(5000),
+                    )
+                    .map_err(TransportError::from)
+            },
+            "send_feature_report",
+        )
+    }
+
+    pub fn get_feature_report(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+        self.with_reopen(
+            |s| {
+                let report_id = buf.first().copied().unwrap_or(0) as u16;
+                let w_value = (0x03u16 << 8) | report_id;
+                s.handle()?
+                    .read_control(
+                        0xA1,
+                        0x01,
+                        w_value,
+                        s.iface as u16,
+                        buf,
+                        Duration::from_millis(5000),
+                    )
+                    .map_err(TransportError::from)
+            },
+            "get_feature_report",
+        )
+    }
+
+    pub fn get_input_report(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+        self.with_reopen(
+            |s| {
+                let report_id = buf.first().copied().unwrap_or(0) as u16;
+                let w_value = (0x01u16 << 8) | report_id;
+                s.handle()?
+                    .read_control(
+                        0xA1,
+                        0x01,
+                        w_value,
+                        s.iface as u16,
+                        buf,
+                        Duration::from_millis(5000),
+                    )
+                    .map_err(TransportError::from)
+            },
+            "get_input_report",
+        )
+    }
+
+    pub fn write(&mut self, data: &[u8]) -> Result<usize, TransportError> {
+        self.with_reopen(
+            |device| device.write_timeout(data, Duration::from_millis(5000)),
+            "write",
+        )
+    }
+
+    pub fn write_timeout(&self, data: &[u8], timeout: Duration) -> Result<usize, TransportError> {
+        if timeout.is_zero() {
+            return Err(TransportError::Other(
+                "HID write timeout must be positive".into(),
+            ));
+        }
+        if let Some(ep_out) = self.ep_out {
+            self.handle()?
+                .write_interrupt(ep_out, data, timeout)
+                .map_err(TransportError::from)
+        } else {
+            // SET_REPORT control transfer: report type = Output (0x02),
+            // report ID = data[0]
+            let report_id = data.first().copied().unwrap_or(0) as u16;
+            let report_type: u16 = 0x02;
+            let w_value = (report_type << 8) | report_id;
+            self.handle()?
+                .write_control(0x21, 0x09, w_value, self.iface as u16, data, timeout)
+                .map_err(TransportError::from)
+        }
+    }
+
+    pub fn read_timeout(
+        &mut self,
+        buf: &mut [u8],
+        timeout_ms: i32,
+    ) -> Result<usize, TransportError> {
+        self.with_reopen(
+            |s| {
+                // timeout_ms semantics (matching hidapi):
+                //   0  = non-blocking poll (check if data available, don't wait)
+                //  -1  = blocking (wait indefinitely)
+                //  >0  = wait up to N milliseconds
+                // libusb uses 0 for "wait forever", so we remap.
+                let timeout = if timeout_ms < 0 {
+                    Duration::from_secs(60)
+                } else if timeout_ms == 0 {
+                    Duration::from_millis(1)
+                } else {
+                    Duration::from_millis(timeout_ms as u64)
+                };
+                match s.handle()?.read_interrupt(s.ep_in, buf, timeout) {
+                    Ok(n) => Ok(n),
+                    Err(rusb::Error::Timeout) => Ok(0),
+                    Err(e) => Err(TransportError::from(e)),
+                }
+            },
+            "read_timeout",
+        )
+    }
+
+    /// Drain any stale data from the device read buffer.
+    pub fn read_flush(&mut self) {
+        let Ok(handle) = self.handle() else {
+            return;
+        };
+        drain_reports(|buf, timeout| handle.read_interrupt(self.ep_in, buf, timeout));
+    }
+}
+
+fn drain_reports(mut read: impl FnMut(&mut [u8], Duration) -> Result<usize, rusb::Error>) {
+    let mut buf = [0u8; 1024];
+    let deadline = Instant::now() + Duration::from_millis(100);
+    for _ in 0..64 {
+        let timeout_ms = deadline
+            .saturating_duration_since(Instant::now())
+            .as_millis()
+            .min(5) as u64;
+        if timeout_ms == 0 {
+            break;
+        }
+        let timeout = Duration::from_millis(timeout_ms);
+        match read(&mut buf, timeout) {
+            Ok(n) if n > 0 => continue,
+            _ => break,
+        }
+    }
+}
+
+impl Drop for RusbHid {
+    fn drop(&mut self) {
+        for &iface in self.claimed.iter().rev() {
+            let _ = self.handle.release_interface(iface);
+            let _ = self.handle.attach_kernel_driver(iface);
+        }
+    }
+}
+
+/// Detach the kernel driver (if attached) and claim the interface in a single
+/// retry loop. During early boot the kernel `usbhid` driver may still be
+/// probing the interface, and other userspace tools (OpenRGB) may briefly hold
+/// a claim; retrying the full detach+claim cycle gives them time to release.
+fn detach_and_claim_interface(
+    handle: &DeviceHandle<UsbContext>,
+    iface: u8,
+) -> Result<(), rusb::Error> {
+    const ATTEMPTS: u32 = 15;
+    const DELAY: Duration = Duration::from_millis(200);
+
+    for attempt in 0..ATTEMPTS {
+        // Detach the kernel driver if it is still attached (idempotent —
+        // safe to check on every attempt).
+        if let Ok(true) = handle.kernel_driver_active(iface) {
+            match handle.detach_kernel_driver(iface) {
+                Ok(()) => debug!("RusbHid: detached kernel driver from interface {iface}"),
+                Err(rusb::Error::NotFound) => {}
+                Err(e) => {
+                    debug!(
+                        "RusbHid: detach interface {iface} (attempt {}): {e}",
+                        attempt + 1
+                    )
+                }
+            }
+        }
+        match handle.claim_interface(iface) {
+            Ok(()) => {
+                if attempt > 0 {
+                    debug!("RusbHid: claimed interface {iface} after {attempt} retry/retries");
+                }
+                return Ok(());
+            }
+            Err(rusb::Error::Busy) => {
+                if attempt + 1 < ATTEMPTS {
+                    std::thread::sleep(DELAY);
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Err(rusb::Error::Busy)
+}
+
+/// Parse the first Usage Page value from a HID report descriptor.
+///
+/// HID report descriptors use a tag-based format:
+/// - `0x05, page` — Usage Page (1 byte)
+/// - `0x06, lo, hi` — Usage Page (2 bytes)
+fn parse_usage_page(desc: &[u8]) -> Option<u16> {
+    let mut i = 0;
+    while i < desc.len() {
+        let prefix = desc[i];
+        if prefix == 0 {
+            break; // End of descriptor
+        }
+        let size = (prefix & 0x03) as usize;
+        let tag = prefix & 0xFC;
+
+        // Usage Page tags: short items with tag bits 0000 01xx
+        // 0x05 = 1-byte usage page, 0x06 = 2-byte usage page
+        if tag == 0x04 {
+            match size {
+                1 if i + 1 < desc.len() => return Some(desc[i + 1] as u16),
+                2 if i + 2 < desc.len() => {
+                    return Some(u16::from_le_bytes([desc[i + 1], desc[i + 2]]))
+                }
+                _ => {}
+            }
+        }
+
+        // Advance past this item: 1 byte prefix + size bytes data
+        // Size value 3 means 4 bytes of data in HID descriptor encoding
+        let data_len = if size == 3 { 4 } else { size };
+        i += 1 + data_len;
+    }
+    None
+}
+
+impl HidTransport for RusbHid {
+    fn write_timeout(&mut self, data: &[u8], timeout: Duration) -> Result<usize, TransportError> {
+        RusbHid::write_timeout(self, data, timeout)
+    }
+    fn write(&mut self, data: &[u8]) -> Result<usize, TransportError> {
+        RusbHid::write(self, data)
+    }
+
+    fn read_timeout(&mut self, buf: &mut [u8], timeout_ms: i32) -> Result<usize, TransportError> {
+        RusbHid::read_timeout(self, buf, timeout_ms)
+    }
+
+    fn send_feature_report(&mut self, data: &[u8]) -> Result<usize, TransportError> {
+        RusbHid::send_feature_report(self, data)
+    }
+
+    fn get_feature_report(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+        RusbHid::get_feature_report(self, buf)
+    }
+
+    fn get_input_report(&mut self, buf: &mut [u8]) -> Result<usize, TransportError> {
+        RusbHid::get_input_report(self, buf)
+    }
+
+    fn read_flush(&mut self) {
+        RusbHid::read_flush(self)
+    }
+
+    fn reopen_count(&self) -> u64 {
+        RusbHid::reopen_count(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn report_and_configuration_errors_do_not_reopen_the_device() {
+        for error in [
+            rusb::Error::Overflow,
+            rusb::Error::Timeout,
+            rusb::Error::InvalidParam,
+            rusb::Error::Access,
+            rusb::Error::Busy,
+            rusb::Error::NotSupported,
+        ] {
+            assert!(!needs_reopen(&error.into()), "{error}");
+        }
+        assert!(!needs_reopen(&TransportError::Other(
+            "invalid report".into()
+        )));
+        for error in [
+            rusb::Error::NoDevice,
+            rusb::Error::Io,
+            rusb::Error::Pipe,
+            rusb::Error::Interrupted,
+        ] {
+            assert!(needs_reopen(&error.into()), "{error}");
+        }
+    }
+
+    #[test]
+    fn repeated_failures_wait_between_reopen_attempts() {
+        let mut gate = ReopenGate::default();
+        let now = Instant::now();
+        assert!(gate.begin(now));
+        for offset in [0, 1, 20, 100, 4999] {
+            assert!(!gate.begin(now + Duration::from_millis(offset)));
+        }
+        assert!(gate.begin(now + Duration::from_secs(5)));
+        assert!(!gate.begin(now + Duration::from_secs(5)));
+    }
+
+    #[test]
+    fn flush_stops_even_when_reports_keep_arriving() {
+        let mut reads = 0;
+        drain_reports(|buf, timeout| {
+            assert!(buf.len() >= 512);
+            assert!(!timeout.is_zero());
+            assert!(timeout <= Duration::from_millis(5));
+            reads += 1;
+            Ok(512)
+        });
+        assert!((1..=64).contains(&reads));
+    }
+
+    #[test]
+    fn flush_stops_on_silence_or_disconnect() {
+        for result in [Ok(0), Err(rusb::Error::Timeout), Err(rusb::Error::NoDevice)] {
+            let mut reads = 0;
+            drain_reports(|_, _| {
+                reads += 1;
+                result
+            });
+            assert_eq!(reads, 1);
+        }
+    }
+}

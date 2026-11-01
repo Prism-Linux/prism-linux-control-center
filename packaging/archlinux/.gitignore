@@ -1,0 +1,7 @@
+src/
+pkg/
+lian-li-linux/
+*.pkg.tar*
+*.log
+*.tar.gz
+lian-li-linux-*/

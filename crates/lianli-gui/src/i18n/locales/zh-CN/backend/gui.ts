@@ -1,0 +1,85 @@
+import type en from "../../en/backend/gui";
+
+const messages: typeof en = {
+  compatibility: {
+    versionMismatch:
+      "已禁用更改：GUI/客户端 {client} 与守护进程 {daemon} 的版本必须一致。请同时更新两者，并正常重启所选守护进程。",
+    noChecks: "已禁用更改：此守护进程缺少兼容性检查。请同时更新两个应用程序，并正常重启所选守护进程。",
+    unreported: "已禁用更改：此守护进程无法报告兼容性。请同时更新两个应用程序，并正常重启所选守护进程。",
+  },
+  ipc: {
+    connectFailed: "无法连接到位于 {path} 的守护进程：{error}",
+    responseFailed: "守护进程响应失败。由于请求可能已被执行，因此未重试：{error}",
+    noCandidates: "没有可用的守护进程套接字",
+    guardSupplied: "兼容性检查由 GUI 后端提供",
+    compatibilityUnverified: "无法验证守护进程兼容性：{error}",
+    daemonChanged: "守护进程已变更。保存前请检查复制的设置",
+    unsupportedRequest: "不支持的请求：{error}",
+    serviceBusy: "请等待服务操作完成后再更改守护进程设置。",
+  },
+  service: {
+    progressDisappeared: "服务进度记录已消失。重试前请重新检查实际的服务状态。",
+    progressUnreadable: "无法读取服务进度：{error}",
+    closeEditor: "管理服务前，请保存并关闭模板编辑器。",
+    busy: "另一个服务操作正在进行。",
+    observeFailed: "无法获取服务进度：{error}",
+    replaced: "另一个操作替换了此进度记录。请重新检查实际的服务状态。",
+    observeSwitchFailed: "无法获取切换进度：{error}",
+    switchProgressDisappeared: "切换进度记录已消失。重试前请重新检查。",
+    switchReplaced: "另一个切换替换了此进度记录。请重新检查实际的服务状态。",
+    hostSupportInstalled: "主机支持已安装。请选择要启动的服务模式。",
+    submissionInterrupted: "GUI 提交已中断。重试前请重新检查独立运行的服务进度。",
+    editorBlocked: "请等待服务操作完成后再打开模板编辑器。",
+  },
+  installation: {
+    cacheUnavailable: "安装检查缓存不可用",
+    alreadyRunning: "安装检查正在进行。请稍后重试。",
+  },
+  diagnostics: {
+    previewMainWindow: "请从主窗口打开诊断导出",
+    saveMainWindow: "请从主窗口保存诊断导出",
+    logsMainWindow: "请从主窗口选择守护进程日志",
+    previewRunning: "另一个诊断预览仍在进行",
+    selectDaemonLogs: "请选择守护进程日志。仅有会话工作进程日志是不够的",
+    previewTimedOut: "诊断预览超时。请修复日志访问后重试：{error}",
+    previewChanged: "预览已变化。保存前请重新生成并检查预览",
+    logsRequired: "需要守护进程日志。保存前请恢复日志访问并重新生成预览",
+  },
+  managedImport: {
+    daemonChanged: "所连接的守护进程已变更。复制前请检查所选内容",
+    submissionPending: "已有一个导入请求正在提交",
+    serviceBusy: "请等待服务操作完成后再导入媒体",
+    updateDaemon: "复制自定义模板素材前，请先更新守护进程",
+    unknownMode: "守护进程模式未知。导入前请重新连接",
+    noResult: "没有记录到导入结果",
+    replaced: "此导入正在进行或已被替换。请重新检查进度",
+    unverified: "此导入没有经过验证的结果",
+  },
+  mediaPreview: {
+    relativePath: "预览需要媒体文件的绝对路径",
+    unsupportedType: "无法预览此类型的文件",
+    openFailed: "无法打开媒体：{error}",
+    inspectFailed: "无法检查媒体：{error}",
+    notFile: "预览需要普通文件",
+    tooLarge: "媒体文件过大，无法预览",
+    readFailed: "无法读取媒体：{error}",
+  },
+  startupImage: {
+    unsupportedExtension: "请选择 PNG、JPEG 或 BMP 静态图片",
+    openFailed: "打开启动画面图片失败：{error}",
+    notFile: "请选择普通图片文件",
+    tooLarge: "图片超过 8 MiB",
+    emptyOrTooLarge: "请选择非空且小于 8 MiB 的图片",
+    notImage: "所选文件不是 PNG、JPEG 或 BMP 图片",
+  },
+  externalLink: {
+    httpsOnly: "只能打开 https 链接",
+    hostSpawnMissing: "此容器中未安装 host-spawn。请在容器内运行一次 distrobox-host-exec true，然后重试",
+    startFailed: "无法启动 xdg-open：{error}",
+    launcherFailed: "xdg-open 失败（{status}）",
+    checkFailed: "无法检查 xdg-open 状态：{error}",
+    portalFailed: "桌面门户失败（{portal}）；{error}",
+  },
+};
+
+export default messages;

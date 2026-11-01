@@ -1,0 +1,615 @@
+//! HydroShift II OLED Curve LED MCU driver (0x0416:0x8051).
+//!
+//! Separate microcontroller from the LCD MCU — handles pump PWM, motor,
+//! RGB, and telemetry via 8-byte unencrypted bulk packets.
+//!
+use crate::traits::{AioDevice, FanDevice, RgbDevice, RgbFrameDelivery};
+use anyhow::{Context, Result};
+use lianli_shared::rgb::{
+    RgbEffect, RgbMode, RgbPlaybackTiming, RgbRenderFamily, RgbRenderProfile, RgbZoneInfo,
+};
+use lianli_shared::ui_message::UiMessage;
+use lianli_transport::usb::{RusbBulk, EP_IN, LCD_WRITE_TIMEOUT, SHUTTING_DOWN};
+use lianli_transport::TransportError;
+use lianli_transport::UsbContext;
+use parking_lot::Mutex;
+use rusb::Device;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tracing::{debug, info, warn};
+
+const PACKET_SIZE: usize = 8;
+
+// Replies exceed the 8-byte commands; receive a full 64-byte endpoint packet.
+const REPLY_SIZE: usize = 64;
+const REPLY_TIMEOUT: Duration = Duration::from_millis(200);
+const HALT_RECOVERY_INTERVAL: Duration = Duration::from_secs(30);
+
+#[derive(Default)]
+struct HaltRecovery {
+    last_attempt: Option<Instant>,
+}
+
+impl HaltRecovery {
+    fn should_attempt(&mut self, error: &TransportError, now: Instant, stopping: bool) -> bool {
+        if stopping || !matches!(error, TransportError::Usb(rusb::Error::Pipe)) {
+            return false;
+        }
+        if self
+            .last_attempt
+            .is_some_and(|last| now.duration_since(last) < HALT_RECOVERY_INTERVAL)
+        {
+            return false;
+        }
+        self.last_attempt = Some(now);
+        true
+    }
+}
+
+struct LedIo {
+    transport: RusbBulk,
+    recovery: HaltRecovery,
+}
+
+impl LedIo {
+    fn read_reply(&mut self, rx: &mut [u8; REPLY_SIZE]) -> Result<usize, TransportError> {
+        let result = self.transport.read(rx, REPLY_TIMEOUT);
+        if let Err(error) = &result {
+            if self.recovery.should_attempt(
+                error,
+                Instant::now(),
+                SHUTTING_DOWN.load(Ordering::Relaxed),
+            ) {
+                // Halt clearing can block independently of REPLY_TIMEOUT; throttle even failed attempts.
+                if let Err(error) = self.transport.clear_halt(EP_IN) {
+                    warn!(%error, "HS2 OLED LED: IN endpoint halt recovery failed");
+                }
+            }
+        }
+        result
+    }
+}
+
+// Opcodes
+const CMD_GET_VER: u8 = 0x10;
+const CMD_SET_MOTOR: u8 = 0x50;
+const CMD_STOP_MOTOR: u8 = 0x51;
+const CMD_GET_TEMP: u8 = 0x60;
+const CMD_SET_PUMP: u8 = 0x61;
+const CMD_GET_PUMP: u8 = 0x62;
+const CMD_SET_MB_SYNC: u8 = 0x64;
+
+// RGB ring push (opcode 0x11). 45-LED ring sent as 3 chunks of 15 LEDs each
+// in 64-byte packets: chunk offsets 0/15/30 LEDs.
+const CMD_PUSH_RGB: u8 = 0x11;
+const RGB_LED_COUNT: usize = 45;
+const RGB_PACKET_SIZE: usize = 64;
+
+/// 22-segment pump RPM→PWM table (monotonically decreasing).
+const PUMP_DATA_POINTS: &[(u16, u16)] = &[
+    (1577, 250),
+    (1608, 300),
+    (1663, 400),
+    (1725, 500),
+    (1783, 600),
+    (1838, 700),
+    (1895, 800),
+    (1950, 900),
+    (2013, 1000),
+    (2073, 1100),
+    (2130, 1200),
+    (2188, 1300),
+    (2248, 1400),
+    (2305, 1500),
+    (2365, 1600),
+    (2420, 1700),
+    (2477, 1800),
+    (2537, 1900),
+    (2592, 2000),
+    (2651, 2100),
+    (2703, 2200),
+    (2735, 2300),
+];
+
+/// Linear-interpolate the pump output value from user RPM.
+fn rpm_to_output(rpm: u16) -> u16 {
+    if rpm <= PUMP_DATA_POINTS[0].0 {
+        return PUMP_DATA_POINTS[0].1;
+    }
+    if rpm >= PUMP_DATA_POINTS.last().unwrap().0 {
+        return PUMP_DATA_POINTS.last().unwrap().1;
+    }
+    for window in PUMP_DATA_POINTS.windows(2) {
+        let (r0, o0) = (window[0].0 as f32, window[0].1 as f32);
+        let (r1, o1) = (window[1].0 as f32, window[1].1 as f32);
+        if (rpm as f32) <= r1 {
+            let t = ((rpm as f32) - r0) / (r1 - r0);
+            return (o0 + t * (o1 - o0)).round() as u16;
+        }
+    }
+    PUMP_DATA_POINTS.last().unwrap().1
+}
+
+pub struct Hs2OledLedController {
+    io: Mutex<LedIo>,
+    firmware: Mutex<Option<String>>,
+    pump_source: Mutex<Option<bool>>,
+}
+
+impl Hs2OledLedController {
+    pub fn new(device: Device<UsbContext>) -> Result<Self> {
+        let mut transport =
+            RusbBulk::open_device(device).context("opening HS2 OLED Curve LED MCU")?;
+        transport
+            .detach_and_configure("HS2 OLED Curve LED")
+            .context("configuring HS2 OLED Curve LED MCU")?;
+        info!("HS2 OLED Curve LED MCU opened");
+        Ok(Self {
+            io: Mutex::new(LedIo {
+                transport,
+                recovery: HaltRecovery::default(),
+            }),
+            firmware: Mutex::new(None),
+            pump_source: Mutex::new(None),
+        })
+    }
+
+    fn send_and_read(&self, tx: &[u8; PACKET_SIZE]) -> Result<[u8; REPLY_SIZE]> {
+        let mut io = self.io.lock();
+        io.transport.write_full(tx, LCD_WRITE_TIMEOUT)?;
+        let mut rx = [0u8; REPLY_SIZE];
+        let result = io.read_reply(&mut rx);
+        if matches!(tx[0], CMD_GET_VER | CMD_GET_TEMP | CMD_GET_PUMP) {
+            let len = result.context("HS2 OLED telemetry read")?;
+            anyhow::ensure!(len >= 3, "short HS2 OLED telemetry response");
+        }
+        // The vendor does not define acknowledgement fields for writes.
+        Ok(rx)
+    }
+
+    /// GetLedVer (0x10) — firmware version.
+    pub fn read_firmware(&self) -> Result<String> {
+        let rx = self.send_and_read(&[CMD_GET_VER, 0, 0, 0, 0, 0, 0, 0])?;
+        let fw = if rx[1] < 5 {
+            format!("{}.{}", rx[1], rx[2])
+        } else {
+            // UTF-8 string starting at rx[2]
+            String::from_utf8_lossy(&rx[2..])
+                .trim_end_matches('\0')
+                .to_string()
+        };
+        *self.firmware.lock() = Some(fw.clone());
+        Ok(fw)
+    }
+
+    /// GetTemperlate (0x60) — returns (coolant_temp, mb_sync_flag).
+    pub fn read_temps(&self) -> Result<(u8, u8)> {
+        let rx = self.send_and_read(&[CMD_GET_TEMP, 0, 0, 0, 0, 0, 0, 0])?;
+        Ok((rx[1], rx[2]))
+    }
+
+    /// SetPumpSpeed (0x61) — raw output value (from RPM→output curve).
+    pub fn set_pump_output(&self, output_value: u16) -> Result<()> {
+        let tx = [
+            CMD_SET_PUMP,
+            (output_value >> 8) as u8,
+            (output_value & 0xFF) as u8,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ];
+        self.send_and_read(&tx)?;
+        debug!("HS2 OLED: SetPumpSpeed output={output_value}");
+        Ok(())
+    }
+
+    /// GetPumpSpeed (0x62) — read pump RPM with calibration offset.
+    pub fn read_pump_rpm_raw(&self) -> Result<u16> {
+        let rx = self.send_and_read(&[CMD_GET_PUMP, 0, 0, 0, 0, 0, 0, 0])?;
+        let raw = u16::from_be_bytes([rx[1], rx[2]]);
+        // Calibration: -40 if ≤1800, -50 if ≤2500, -60 otherwise
+        let calibrated = if raw <= 1800 {
+            raw.saturating_sub(40)
+        } else if raw <= 2500 {
+            raw.saturating_sub(50)
+        } else {
+            raw.saturating_sub(60)
+        };
+        Ok(calibrated)
+    }
+
+    /// SetMBSync (0x64) — inverted: 0=sync on, 1=sync off.
+    pub fn set_mb_sync(&self, enabled: bool) -> Result<()> {
+        let mut source = self.pump_source.lock();
+        self.apply_pump_source(&mut source, enabled)
+    }
+
+    fn apply_pump_source(&self, source: &mut Option<bool>, enabled: bool) -> Result<()> {
+        if *source == Some(enabled) {
+            return Ok(());
+        }
+        *source = None;
+        let tx = pump_source_packet(enabled);
+        self.send_and_read(&tx)?;
+        *source = Some(enabled);
+        Ok(())
+    }
+
+    /// SetMotor (0x50) — motorized angle/Y-position.
+    pub fn set_motor(&self, motor_index: u8, dir: u8, step: u32, speed: u8) -> Result<()> {
+        let tx = [
+            CMD_SET_MOTOR,
+            motor_index,
+            dir,
+            (step >> 24) as u8,
+            (step >> 16) as u8,
+            (step >> 8) as u8,
+            step as u8,
+            speed,
+        ];
+        self.send_and_read(&tx)?;
+        debug!("HS2 OLED: SetMotor idx={motor_index} dir={dir} step={step} speed={speed}");
+        Ok(())
+    }
+
+    /// StopMotor (0x51).
+    pub fn stop_motor(&self, motor_index: u8) -> Result<()> {
+        let tx = [CMD_STOP_MOTOR, motor_index, 0, 0, 0, 0, 0, 0];
+        self.send_and_read(&tx)?;
+        Ok(())
+    }
+
+    /// Push one RGB frame to the 45-LED ring via opcode 0x11, sent as 3
+    /// equal chunks of 15 LEDs each (offsets 0, 15, 30).
+    pub fn send_rgb_frame(&self, colors: &[[u8; 3]]) -> Result<()> {
+        let mut frame = [[0u8; 3]; RGB_LED_COUNT];
+        for (dst, src) in frame.iter_mut().zip(colors.iter().take(RGB_LED_COUNT)) {
+            *dst = *src;
+        }
+
+        self.send_rgb_packets(build_rgb_packets(&frame))
+    }
+
+    fn send_rgb_sync_frame(&self, colors: &[[u8; 3]]) -> Result<()> {
+        anyhow::ensure!(colors.len() == 35, "HS2 OLED sync RGB requires 35 LEDs");
+        self.send_rgb_packets(build_rgb_packets(colors))
+    }
+
+    fn send_rgb_packets(&self, packets: [[u8; RGB_PACKET_SIZE]; 3]) -> Result<()> {
+        let mut io = self.io.lock();
+        for (chunk, packet) in packets.iter().enumerate() {
+            io.transport
+                .write(packet, LCD_WRITE_TIMEOUT)
+                .with_context(|| format!("HS2 OLED LED: write RGB chunk {chunk}"))?;
+            let mut rx = [0u8; REPLY_SIZE];
+            // The vendor does not define acknowledgement fields for writes.
+            let _ = io.read_reply(&mut rx);
+        }
+        Ok(())
+    }
+}
+
+fn pump_source_packet(motherboard: bool) -> [u8; PACKET_SIZE] {
+    [CMD_SET_MB_SYNC, u8::from(!motherboard), 0, 0, 0, 0, 0, 0]
+}
+
+fn build_rgb_packets(colors: &[[u8; 3]]) -> [[u8; RGB_PACKET_SIZE]; 3] {
+    let mut packets = [[0; RGB_PACKET_SIZE]; 3];
+    for (chunk, packet) in packets.iter_mut().enumerate() {
+        let start = chunk * 15;
+        packet[0] = CMD_PUSH_RGB;
+        packet[1] = start as u8;
+        for (led, color) in colors.iter().skip(start).take(15).enumerate() {
+            let offset = 4 + led * 3;
+            packet[offset..offset + 3].copy_from_slice(color);
+        }
+    }
+    packets
+}
+
+fn scale_brightness([r, g, b]: [u8; 3], brightness: u8) -> [u8; 3] {
+    let scale = (lianli_shared::rgb::brightness_scale(brightness) as f32) / 4.0;
+    [
+        (r as f32 * scale).round() as u8,
+        (g as f32 * scale).round() as u8,
+        (b as f32 * scale).round() as u8,
+    ]
+}
+
+impl FanDevice for Hs2OledLedController {
+    fn set_fan_speed(&self, _slot: u8, _duty: u8) -> Result<()> {
+        // No direct fan channels on the LED MCU; fans are motherboard-PWM
+        // synced. This impl exists only to expose pump control via
+        // `set_pump_speed` below.
+        Ok(())
+    }
+
+    fn set_fan_speeds(&self, _duties: &[u8]) -> Result<()> {
+        Ok(())
+    }
+
+    fn read_fan_rpm(&self) -> Result<Vec<u16>> {
+        Ok(vec![])
+    }
+
+    fn fan_slot_count(&self) -> u8 {
+        0
+    }
+
+    fn has_pump_control(&self) -> bool {
+        true
+    }
+
+    fn supports_pump_mb_sync(&self) -> bool {
+        true
+    }
+
+    fn set_pump_speed(&self, duty: u8) -> Result<()> {
+        self.set_pump_speed_source(0, duty)
+    }
+
+    fn set_pump_speed_source(&self, source: u8, duty: u8) -> Result<()> {
+        anyhow::ensure!(source <= 1, "invalid OLED pump source");
+        let mut applied_source = self.pump_source.lock();
+        self.apply_pump_source(&mut applied_source, source == 1)?;
+        if source == 1 {
+            return Ok(());
+        }
+        let pct = lianli_shared::fan::duty_to_percent(duty) as f32 / 100.0;
+        let rpm = (1600.0 + pct * (2735.0 - 1600.0)).round() as u16;
+        let output = rpm_to_output(rpm);
+        let result = self.set_pump_output(output);
+        if result.is_err() {
+            *applied_source = None;
+        }
+        result
+    }
+
+    fn read_pump_rpm(&self) -> Option<u16> {
+        self.read_pump_rpm_raw().ok()
+    }
+
+    fn poll_coolant_temp(&self) -> Option<f32> {
+        self.read_temps().ok().map(|(temp, _)| f32::from(temp))
+    }
+}
+
+impl AioDevice for Hs2OledLedController {
+    fn read_pump_rpm(&self) -> Result<u16> {
+        self.read_pump_rpm_raw()
+    }
+
+    fn read_coolant_temp(&self) -> Result<f32> {
+        let (t1, _t2) = self.read_temps()?;
+        Ok(t1 as f32)
+    }
+}
+
+impl RgbDevice for Hs2OledLedController {
+    fn device_name(&self) -> String {
+        "HydroShift II OLED Curve LED".to_string()
+    }
+
+    fn supported_modes(&self) -> Vec<RgbMode> {
+        vec![RgbMode::Off, RgbMode::Static, RgbMode::Direct]
+    }
+
+    fn zone_info(&self) -> Vec<RgbZoneInfo> {
+        vec![RgbZoneInfo {
+            name: "Ring".to_string(),
+            name_ui: Some(UiMessage::new("devices.zone.ring")),
+            led_count: RGB_LED_COUNT as u16,
+        }]
+    }
+
+    fn supports_direct(&self) -> bool {
+        true
+    }
+
+    fn software_render_profile(&self) -> Option<RgbRenderProfile> {
+        Some(RgbRenderProfile {
+            family: RgbRenderFamily::HydroShiftIIOled,
+            fan_count: 0,
+            led_count: RGB_LED_COUNT as u16,
+            right_attach: false,
+        })
+    }
+
+    fn software_frame_delivery(&self) -> Option<RgbFrameDelivery> {
+        Some(RgbFrameDelivery::Streaming)
+    }
+
+    fn set_sync_animation(&self, frames: &[Vec<[u8; 3]>], timing: RgbPlaybackTiming) -> Result<()> {
+        anyhow::ensure!(
+            frames.len() == 1,
+            "HS2 OLED sync accepts one frame at a time"
+        );
+        self.validate_sync_animation(frames, timing)?;
+        self.send_rgb_sync_frame(&frames[0])
+    }
+
+    fn validate_sync_animation(
+        &self,
+        frames: &[Vec<[u8; 3]>],
+        timing: RgbPlaybackTiming,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            !frames.is_empty() && frames.len() <= usize::from(u16::MAX),
+            "invalid HS2 OLED sync frame count"
+        );
+        anyhow::ensure!(
+            frames.iter().all(|frame| frame.len() == 35),
+            "HS2 OLED sync RGB requires 35 LEDs per frame"
+        );
+        anyhow::ensure!(
+            (100..=6_553_599).contains(&timing.interval_hundredths),
+            "invalid HS2 OLED sync playback interval"
+        );
+        anyhow::ensure!(
+            timing.secondary_interval_ticks == 0
+                && timing.secondary_frame_count == 0
+                && !timing.outer_longest,
+            "HS2 OLED sync does not support secondary timing"
+        );
+        Ok(())
+    }
+
+    fn set_software_frames(&self, frames: &[Vec<[u8; 3]>], _interval_ms: u16) -> Result<()> {
+        if frames.len() != 1 || frames[0].len() != RGB_LED_COUNT {
+            anyhow::bail!("HS2 OLED RGB requires one full {RGB_LED_COUNT}-LED frame")
+        }
+        self.send_rgb_frame(&frames[0])
+    }
+
+    fn set_zone_effect(&self, zone: u8, effect: &RgbEffect) -> Result<()> {
+        if zone != 0 {
+            anyhow::bail!("HS2 OLED LED: zone {zone} out of range (only zone 0)");
+        }
+        let color = if effect.mode == RgbMode::Off || effect.disabled {
+            [0, 0, 0]
+        } else {
+            let base = effect.colors.first().copied().unwrap_or([255, 255, 255]);
+            scale_brightness(base, effect.brightness)
+        };
+        let frame = vec![color; RGB_LED_COUNT];
+        self.send_rgb_frame(&frame)
+    }
+
+    fn set_direct_colors(&self, zone: u8, colors: &[[u8; 3]]) -> Result<()> {
+        if zone != 0 {
+            anyhow::bail!("HS2 OLED LED: zone {zone} out of range (only zone 0)");
+        }
+        self.send_rgb_frame(colors)
+    }
+}
+
+pub struct Hs2OledLedDriver;
+
+impl crate::registry::DeviceDriver for Hs2OledLedDriver {
+    fn family(&self) -> lianli_shared::device_id::DeviceFamily {
+        lianli_shared::device_id::DeviceFamily::HydroShift2OledCurveLed
+    }
+
+    fn open(
+        &self,
+        ctx: &crate::registry::OpenContext,
+    ) -> anyhow::Result<crate::registry::OpenedDevice> {
+        let ctrl =
+            std::sync::Arc::new(Hs2OledLedController::new(rusb::Device::clone(&ctx.device))?);
+        let firmware = ctrl.read_firmware().ok();
+        Ok(crate::registry::OpenedDevice {
+            sensors: None,
+            id: ctx.device_id(),
+            family: lianli_shared::device_id::DeviceFamily::HydroShift2OledCurveLed,
+            capabilities: lianli_shared::device_id::DeviceFamily::HydroShift2OledCurveLed
+                .capabilities(),
+            transport_kind: lianli_shared::device_id::TransportKind::UsbBulk,
+            model_name: "HydroShift II OLED Curve LED".to_string(),
+            firmware,
+            fan: Some(Box::new(std::sync::Arc::clone(&ctrl))),
+            lcd: None,
+            rgb: vec![(
+                String::new(),
+                std::sync::Arc::clone(&ctrl) as Arc<dyn crate::traits::RgbDevice>,
+            )],
+            aio: Some(Box::new(ctrl)),
+            shared_hid: None,
+            shared_usb: None,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        build_rgb_packets, pump_source_packet, rpm_to_output, HaltRecovery, CMD_PUSH_RGB,
+        HALT_RECOVERY_INTERVAL,
+    };
+    use lianli_transport::TransportError;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn halt_recovery_ignores_nonstall_errors() {
+        let now = Instant::now();
+        let mut recovery = HaltRecovery::default();
+        for error in [
+            rusb::Error::Timeout,
+            rusb::Error::Interrupted,
+            rusb::Error::NoDevice,
+            rusb::Error::Overflow,
+            rusb::Error::Io,
+        ] {
+            assert!(!recovery.should_attempt(&TransportError::Usb(error), now, false));
+        }
+        assert!(recovery.should_attempt(&TransportError::Usb(rusb::Error::Pipe), now, false));
+    }
+
+    #[test]
+    fn halt_recovery_skips_shutdown() {
+        let now = Instant::now();
+        let mut recovery = HaltRecovery::default();
+        let error = TransportError::Usb(rusb::Error::Pipe);
+        assert!(!recovery.should_attempt(&error, now, true));
+        assert!(recovery.should_attempt(&error, now, false));
+        assert!(!recovery.should_attempt(&error, now + HALT_RECOVERY_INTERVAL, true));
+    }
+
+    #[test]
+    fn halt_recovery_throttles_attempts_without_requiring_success() {
+        let now = Instant::now();
+        let mut recovery = HaltRecovery::default();
+        let error = TransportError::Usb(rusb::Error::Pipe);
+        assert!(recovery.should_attempt(&error, now, false));
+        assert!(!recovery.should_attempt(&error, now, false));
+        assert!(!recovery.should_attempt(
+            &error,
+            now + HALT_RECOVERY_INTERVAL - Duration::from_millis(1),
+            false,
+        ));
+        assert!(recovery.should_attempt(&error, now + HALT_RECOVERY_INTERVAL, false));
+        assert!(!recovery.should_attempt(&error, now + HALT_RECOVERY_INTERVAL, false));
+    }
+
+    #[test]
+    fn pump_source_uses_inverted_oled_selector() {
+        assert_eq!(pump_source_packet(true), [0x64, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(pump_source_packet(false), [0x64, 1, 0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn rpm_table_clamps_low() {
+        assert_eq!(rpm_to_output(1000), 250);
+        assert_eq!(rpm_to_output(1577), 250);
+    }
+
+    #[test]
+    fn rpm_table_clamps_high() {
+        assert_eq!(rpm_to_output(3000), 2300);
+        assert_eq!(rpm_to_output(2735), 2300);
+    }
+
+    #[test]
+    fn rpm_table_interpolates() {
+        // Between 1577→250 and 1608→300: midpoint 1592.5 → ~275
+        let v = rpm_to_output(1592);
+        assert!((270..=280).contains(&v), "got {v}");
+    }
+
+    #[test]
+    fn sync_rgb_packets_send_fifteen_fifteen_and_five_leds() {
+        let colors: Vec<_> = (0..35).map(|index| [index, index + 1, index + 2]).collect();
+        let packets = build_rgb_packets(&colors);
+
+        for (chunk, packet) in packets.iter().enumerate() {
+            assert_eq!(packet[0], CMD_PUSH_RGB);
+            assert_eq!(packet[1], (chunk * 15) as u8);
+        }
+        assert_eq!(&packets[0][4..49], colors[0..15].as_flattened());
+        assert_eq!(&packets[1][4..49], colors[15..30].as_flattened());
+        assert_eq!(&packets[2][4..19], colors[30..35].as_flattened());
+        assert!(packets[2][19..].iter().all(|byte| *byte == 0));
+    }
+}
