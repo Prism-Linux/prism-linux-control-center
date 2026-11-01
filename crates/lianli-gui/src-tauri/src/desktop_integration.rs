@@ -119,7 +119,7 @@ fn sync_autostart_in(
     let executable = desktop_exec_arg(executable);
     let minimized = if launch_minimized { " --minimized" } else { "" };
     let contents = format!(
-        "[Desktop Entry]\nType=Application\nName=Lian Li Linux\nComment=Hardware lighting and cooling dashboard\nExec={executable}{minimized}\nIcon=com.sgtaziz.lianlilinux\nTerminal=false\nStartupNotify=false\nX-GNOME-Autostart-enabled=true\n{AUTOSTART_MARKER}\n"
+        "[Desktop Entry]\nType=Application\nName=Prism Linux Control Center\nComment=Hardware lighting and cooling dashboard\nExec={executable}{minimized}\nIcon=com.sgtaziz.lianlilinux\nTerminal=false\nStartupNotify=false\nX-GNOME-Autostart-enabled=true\n{AUTOSTART_MARKER}\n"
     );
     let temp = directory.join(format!(".{AUTOSTART_FILE}.{}.tmp", std::process::id()));
     let mut file = OpenOptions::new()
