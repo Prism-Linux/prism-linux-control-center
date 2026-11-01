@@ -21,6 +21,7 @@ import { useLanguageStore, type LanguagePreference } from "@/stores/language";
 import { useUpdatesStore } from "@/stores/updates";
 import type { SensorSource } from "@/types";
 import { formatSensorLabel } from "@/stores/sensorOptions";
+import prismLogo from "@/assets/branding/prism-linux-control-center-logo.png";
 
 const t = useTranslate();
 const language = useLanguageStore();
@@ -357,6 +358,7 @@ function onHidBackend(v: "hidraw" | "rusb") {
       <div class="section-head">
         <h2 class="section-title">{{ t("settings.about.title") }}</h2>
       </div>
+      <img class="about-logo" :src="prismLogo" alt="Prism Linux Control Center" />
       <p class="about-line">
         {{ t("settings.about.tagline") }}
         <span class="muted"> · v{{ appVersion }}</span>
@@ -476,6 +478,12 @@ function onHidBackend(v: "hidraw" | "rusb") {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
+}
+.about-logo {
+  display: block;
+  width: min(100%, 720px);
+  height: auto;
+  margin: 0 auto;
 }
 .repo-link {
   display: inline-flex;

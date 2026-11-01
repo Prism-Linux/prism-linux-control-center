@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/icons/icon.svg" width="128" height="128" alt="Prism Linux Control Center">
+  <img src="assets/branding/prism-linux-control-center-logo.png" width="850" alt="Prism Linux Control Center">
 </p>
 
 <h1 align="center">Prism Linux Control Center</h1>

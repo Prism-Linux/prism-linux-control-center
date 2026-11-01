@@ -89,10 +89,10 @@ install -Dpm644 packaging/desktop/com.sgtaziz.lianlilinux.desktop %{buildroot}%{
 install -Dpm644 packaging/desktop/com.sgtaziz.lianlilinux.metainfo.xml %{buildroot}%{_datadir}/metainfo/com.sgtaziz.lianlilinux.metainfo.xml
 install -d %{buildroot}%{_mandir}/man1
 install -pm644 packaging/man/*.1 %{buildroot}%{_mandir}/man1/
-install -Dpm644 assets/icons/32x32.png      %{buildroot}%{_datadir}/icons/hicolor/32x32/apps/com.sgtaziz.lianlilinux.png
-install -Dpm644 assets/icons/128x128.png    %{buildroot}%{_datadir}/icons/hicolor/128x128/apps/com.sgtaziz.lianlilinux.png
-install -Dpm644 assets/icons/128x128@2x.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/com.sgtaziz.lianlilinux.png
-install -Dpm644 assets/icons/icon.svg       %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/com.sgtaziz.lianlilinux.svg
+for size in 16 24 32 48 64 128 256 512; do
+    install -Dpm644 "assets/icons/${size}x${size}.png" \
+        "%{buildroot}%{_datadir}/icons/hicolor/${size}x${size}/apps/com.sgtaziz.lianlilinux.png"
+done
 
 %pre
 getent group lianli >/dev/null || groupadd -r lianli
@@ -156,10 +156,14 @@ fi
 %{_datadir}/applications/com.sgtaziz.lianlilinux.desktop
 %{_datadir}/metainfo/com.sgtaziz.lianlilinux.metainfo.xml
 %{_mandir}/man1/lianli-*.1*
+%{_datadir}/icons/hicolor/16x16/apps/com.sgtaziz.lianlilinux.png
+%{_datadir}/icons/hicolor/24x24/apps/com.sgtaziz.lianlilinux.png
 %{_datadir}/icons/hicolor/32x32/apps/com.sgtaziz.lianlilinux.png
+%{_datadir}/icons/hicolor/48x48/apps/com.sgtaziz.lianlilinux.png
+%{_datadir}/icons/hicolor/64x64/apps/com.sgtaziz.lianlilinux.png
 %{_datadir}/icons/hicolor/128x128/apps/com.sgtaziz.lianlilinux.png
 %{_datadir}/icons/hicolor/256x256/apps/com.sgtaziz.lianlilinux.png
-%{_datadir}/icons/hicolor/scalable/apps/com.sgtaziz.lianlilinux.svg
+%{_datadir}/icons/hicolor/512x512/apps/com.sgtaziz.lianlilinux.png
 
 %package evdi
 Summary:        Bundled libevdi library for %{name}
